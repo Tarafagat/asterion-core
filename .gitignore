@@ -1,0 +1,12 @@
+# Cubre el CLI en Go (cmd/, internal/) — backend-core/ y frontend-core/
+# mantienen su propio .gitignore (venv, node_modules, .env, dist).
+
+/asterion
+/asterion-core
+*.exe
+*.test
+
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json

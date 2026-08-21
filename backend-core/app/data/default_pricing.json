@@ -1,0 +1,13 @@
+{
+  "_comment": "Tabla de precios PÚBLICA por defecto de Asterion Core (open source). No es la tarifa real de facturación de ningún cliente — es un punto de partida razonable para estimar costo offline. Se refresca sola contra GET /pricing de Asterion Cloud cuando hay sesión activa (ver app/pricing.py). Mismas claves que resource_pricing en Cloud.",
+  "updated_at": null,
+  "source": "bundled-default",
+  "prices": {
+    "cpu_core_hour": 0.01,
+    "ram_gb_hour": 0.005,
+    "storage_gb_month_hdd": 0.02,
+    "storage_gb_month_ssd": 0.05,
+    "storage_gb_month_nvme": 0.09,
+    "admin_fee_month": 2.0
+  }
+}
