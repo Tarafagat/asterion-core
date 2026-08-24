@@ -1,5 +1,15 @@
 import { useEffect, useState } from "react";
-import { api, type AuthStatus, type CostEstimate, type DoctorReport, type MachineInfo, type RuntimeStatus, type Snapshot } from "./lib/api";
+import type { FormEvent } from "react";
+import {
+  api,
+  type AuthStatus,
+  type CostEstimate,
+  type DoctorReport,
+  type MachineInfo,
+  type Plugin,
+  type RuntimeStatus,
+  type Snapshot,
+} from "./lib/api";
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | undefined>(undefined);
@@ -224,6 +234,8 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
           <DoctorList title="Servicio" checks={doctor.service} />
         </div>
       )}
+
+      <PluginsPanel />
     </div>
   );
 }
@@ -251,6 +263,229 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="stat">
       <div className="label">{label}</div>
       <div className="value">{value}</div>
+    </div>
+  );
+}
+
+function PluginsPanel() {
+  const [pluginsList, setPluginsList] = useState<Plugin[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [repoUrl, setRepoUrl] = useState("");
+  const [installing, setInstalling] = useState(false);
+
+  async function refresh() {
+    try {
+      const list = await api.listPlugins();
+      setPluginsList(list);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudieron listar los plugins.");
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  async function handleInstall(e: FormEvent) {
+    e.preventDefault();
+    if (!repoUrl.trim()) return;
+    setInstalling(true);
+    setError(null);
+    try {
+      await api.installPlugin(repoUrl.trim());
+      setRepoUrl("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo instalar el plugin.");
+    } finally {
+      setInstalling(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <p className="section-title">Plugins</p>
+      <p className="hint">
+        Integraciones de terceros que corren como proceso propio, en su propio puerto local — instalalas desde el
+        repo de GitHub del plugin (público o privado, según tus credenciales de git). Nunca se ejecuta nada del repo
+        salvo lo que su plugin.yaml declara.
+      </p>
+      <form onSubmit={handleInstall} style={{ marginTop: "0.85rem", display: "flex", gap: "0.5rem" }}>
+        <input
+          type="text"
+          value={repoUrl}
+          onChange={(e) => setRepoUrl(e.target.value)}
+          placeholder="https://github.com/usuario/asterion-plugin-sii"
+          className="token-input"
+        />
+        <button className="small-btn" type="submit" disabled={!repoUrl.trim() || installing}>
+          {installing ? "Instalando…" : "Instalar"}
+        </button>
+      </form>
+      {error && <p className="error-text">{error}</p>}
+      {pluginsList && pluginsList.length === 0 && (
+        <p className="hint" style={{ marginTop: "0.85rem" }}>
+          Todavía no hay plugins instalados en esta máquina.
+        </p>
+      )}
+      {pluginsList?.map((p) => (
+        <PluginCard key={p.name} plugin={p} onChange={refresh} />
+      ))}
+    </div>
+  );
+}
+
+function PluginCard({ plugin, onChange }: { plugin: Plugin; onChange: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [configValues, setConfigValues] = useState<Record<string, string>>({});
+  const [showConfig, setShowConfig] = useState(false);
+  const [projectId, setProjectId] = useState("");
+
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ocurrió un error.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadConfig() {
+    try {
+      const current = await api.pluginConfig(plugin.name);
+      // Los campos 'secret' vuelven enmascarados ("••••••••") — precargarlos
+      // reenviaría la máscara como si fuera el valor real y pisaría el
+      // secreto guardado. Solo se precargan los campos no secretos.
+      const prefill: Record<string, string> = {};
+      for (const field of plugin.manifest.config_schema ?? []) {
+        if (!field.secret && current[field.key] !== undefined) {
+          prefill[field.key] = current[field.key];
+        }
+      }
+      setConfigValues(prefill);
+      setShowConfig(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo leer la configuración.");
+    }
+  }
+
+  async function handleSaveConfig(e: FormEvent) {
+    e.preventDefault();
+    const values = Object.fromEntries(Object.entries(configValues).filter(([, v]) => v !== ""));
+    if (Object.keys(values).length === 0) return;
+    await run(() => api.updatePluginConfig(plugin.name, values));
+  }
+
+  async function handleConnect(e: FormEvent) {
+    e.preventDefault();
+    const id = parseInt(projectId, 10);
+    if (!id) return;
+    await run(() => api.connectPlugin(plugin.name, id));
+  }
+
+  const statusClass =
+    plugin.status === "running" ? "status-running" : plugin.status === "unhealthy" ? "status-unhealthy" : "status-stopped";
+
+  return (
+    <div className="plugin-item">
+      <div className="plugin-header">
+        <div>
+          <span className={`status-dot ${statusClass}`} />
+          <span className="plugin-name">{plugin.manifest.name}</span>
+          <span className="plugin-version">v{plugin.manifest.version}</span>
+        </div>
+        <span className="plugin-ref">{plugin.external_ref}</span>
+      </div>
+
+      {plugin.manifest.description && (
+        <p className="hint" style={{ marginTop: "0.4rem" }}>
+          {plugin.manifest.description}
+        </p>
+      )}
+      <p className="hint" style={{ marginTop: "0.3rem" }}>
+        Estado: {plugin.status}
+        {plugin.port ? ` · puerto ${plugin.port}` : ""}
+        {plugin.connected_project_id ? ` · conectado a proyecto ${plugin.connected_project_id} de Asterion Cloud` : ""}
+      </p>
+
+      <div className="btn-row" style={{ marginTop: "0.75rem" }}>
+        {plugin.status === "running" ? (
+          <button className="small-btn" disabled={busy} onClick={() => run(() => api.stopPlugin(plugin.name))}>
+            Detener
+          </button>
+        ) : (
+          <button className="small-btn" disabled={busy} onClick={() => run(() => api.startPlugin(plugin.name))}>
+            Arrancar
+          </button>
+        )}
+        {plugin.manifest.config_schema && plugin.manifest.config_schema.length > 0 && (
+          <button className="small-btn" disabled={busy} onClick={loadConfig}>
+            Configurar
+          </button>
+        )}
+        <button
+          className="danger-btn"
+          disabled={busy}
+          onClick={() => {
+            if (window.confirm(`¿Desinstalar ${plugin.name}? Esto borra el repo clonado y su configuración guardada.`)) {
+              run(() => api.removePlugin(plugin.name));
+            }
+          }}
+        >
+          Desinstalar
+        </button>
+      </div>
+
+      {showConfig && (
+        <form onSubmit={handleSaveConfig} style={{ marginTop: "0.75rem" }}>
+          {plugin.manifest.config_schema?.map((field) => (
+            <div className="field-row" key={field.key}>
+              <label htmlFor={`${plugin.name}-${field.key}`}>
+                {field.label}
+                {field.required ? " *" : ""}
+              </label>
+              <input
+                id={`${plugin.name}-${field.key}`}
+                className="token-input"
+                type={field.secret ? "password" : "text"}
+                value={configValues[field.key] ?? ""}
+                placeholder={field.secret ? "sin cambios" : field.default}
+                onChange={(e) => setConfigValues({ ...configValues, [field.key]: e.target.value })}
+              />
+            </div>
+          ))}
+          <button className="small-btn" type="submit" disabled={busy} style={{ marginTop: "0.6rem" }}>
+            Guardar config
+          </button>
+        </form>
+      )}
+
+      {!plugin.connected_project_id && (
+        <form
+          onSubmit={handleConnect}
+          style={{ marginTop: "0.75rem", display: "flex", gap: "0.5rem", alignItems: "center" }}
+        >
+          <input
+            type="number"
+            min={1}
+            className="token-input"
+            style={{ maxWidth: "8rem", padding: "0.45rem 0.7rem" }}
+            placeholder="ID proyecto Cloud"
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+          />
+          <button className="small-btn" type="submit" disabled={busy || !projectId}>
+            Conectar a Cloud
+          </button>
+        </form>
+      )}
+
+      {error && <p className="error-text">{error}</p>}
     </div>
   );
 }

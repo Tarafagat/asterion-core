@@ -8,24 +8,17 @@ desde la terminal o desde este dashboard.
 """
 
 import json
-import os
-import shutil
 import subprocess
+
+from app.asterion_bin import find_asterion_binary
 
 
 class RuntimeBridgeError(Exception):
     pass
 
 
-def _find_asterion_binary() -> str | None:
-    env_path = os.getenv("ASTERION_BIN")
-    if env_path and os.path.isfile(env_path):
-        return env_path
-    return shutil.which("asterion")
-
-
 def _run(args: list[str]) -> dict:
-    binary = _find_asterion_binary()
+    binary = find_asterion_binary()
     if not binary:
         raise RuntimeBridgeError(
             "No encontré el binario 'asterion' en PATH ni en la variable ASTERION_BIN. "

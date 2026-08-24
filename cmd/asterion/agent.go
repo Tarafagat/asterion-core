@@ -50,7 +50,7 @@ func agentStatusCmd() *cobra.Command {
 			_, hasKey := keys[instance.ID]
 
 			serviceName := "asterion-agent-" + instance.ID + ".service"
-			serviceState := "desconocido (solo Linux/systemd por ahora)"
+			serviceState := "desconocido (solo Linux/systemd y macOS/launchd por ahora)"
 			if runtime.GOOS == "linux" {
 				if _, err := exec.LookPath("systemctl"); err == nil {
 					out, _ := exec.Command("systemctl", "--user", "is-active", serviceName).Output()
@@ -59,6 +59,10 @@ func agentStatusCmd() *cobra.Command {
 						serviceState = "inactive"
 					}
 				}
+			}
+			if runtime.GOOS == "darwin" {
+				serviceName = launchdLabel(instance.ID)
+				serviceState = launchdStatus(serviceName)
 			}
 
 			printJSON(map[string]any{
@@ -156,11 +160,15 @@ func removeAgentKey(localID string) {
 }
 
 // installAgentService deja `asterion agent-run --local <id>` corriendo
-// como servicio de usuario systemd. Solo Linux por ahora — en otros
-// sistemas operativos el llamador debe mostrar el comando manual.
+// como servicio de usuario — systemd --user en Linux, launchd en macOS. En
+// el resto de los sistemas operativos el llamador debe mostrar el comando
+// manual.
 func installAgentService(localID string) error {
+	if runtime.GOOS == "darwin" {
+		return installAgentServiceDarwin(localID)
+	}
 	if runtime.GOOS != "linux" {
-		return fmt.Errorf("la instalación automática del servicio todavía solo soporta Linux (systemd --user)")
+		return fmt.Errorf("la instalación automática del servicio todavía solo soporta Linux (systemd --user) y macOS (launchd)")
 	}
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return fmt.Errorf("no se encontró systemctl")
@@ -213,8 +221,11 @@ WantedBy=default.target
 // instalado (systemctl stop/disable sobre algo inexistente no es fatal
 // acá, solo se ignora el resultado).
 func uninstallAgentService(localID string) error {
+	if runtime.GOOS == "darwin" {
+		return uninstallAgentServiceDarwin(localID)
+	}
 	if runtime.GOOS != "linux" {
-		return fmt.Errorf("la desinstalación automática del servicio todavía solo soporta Linux (systemd --user)")
+		return fmt.Errorf("la desinstalación automática del servicio todavía solo soporta Linux (systemd --user) y macOS (launchd)")
 	}
 	if _, err := exec.LookPath("systemctl"); err != nil {
 		return fmt.Errorf("no se encontró systemctl")
@@ -233,6 +244,118 @@ func uninstallAgentService(localID string) error {
 	}
 	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
 	return nil
+}
+
+// launchdLabel es el identificador reverse-DNS que usa launchd para un
+// agente de usuario — el mismo rol que el nombre de unit de systemd.
+func launchdLabel(localID string) string {
+	return "com.asterion.agent." + localID
+}
+
+func launchdPlistPath(localID string) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, "Library", "LaunchAgents", launchdLabel(localID)+".plist"), nil
+}
+
+// installAgentServiceDarwin es el equivalente de installAgentService pero
+// con launchd: un plist de usuario en ~/Library/LaunchAgents (nunca un
+// LaunchDaemon de sistema — ver mismo criterio que systemd --user, no root)
+// con RunAtLoad+KeepAlive para que se levante solo al iniciar sesión y se
+// reinicie si el proceso muere, igual que Restart=always en la unit de
+// systemd.
+func installAgentServiceDarwin(localID string) error {
+	if _, err := exec.LookPath("launchctl"); err != nil {
+		return fmt.Errorf("no se encontró launchctl")
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	logPath := filepath.Join(home, "Library", "Logs", "asterion-agent-"+localID+".log")
+
+	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>%s</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>%s</string>
+		<string>agent-run</string>
+		<string>--local</string>
+		<string>%s</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>%s</string>
+	<key>StandardErrorPath</key>
+	<string>%s</string>
+</dict>
+</plist>
+`, launchdLabel(localID), exePath, localID, logPath, logPath)
+
+	plistPath, err := launchdPlistPath(localID)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(plistPath, []byte(plist), 0o644); err != nil {
+		return err
+	}
+
+	// unload primero (silencioso, por si ya había un plist viejo cargado)
+	// para que load no falle con "already loaded" en una reinstalación.
+	_ = exec.Command("launchctl", "unload", "-w", plistPath).Run()
+	if out, err := exec.Command("launchctl", "load", "-w", plistPath).CombinedOutput(); err != nil {
+		return fmt.Errorf("launchctl load: %w (%s)", err, out)
+	}
+	return nil
+}
+
+// uninstallAgentServiceDarwin es el equivalente de uninstallAgentService
+// pero con launchd.
+func uninstallAgentServiceDarwin(localID string) error {
+	if _, err := exec.LookPath("launchctl"); err != nil {
+		return fmt.Errorf("no se encontró launchctl")
+	}
+	plistPath, err := launchdPlistPath(localID)
+	if err != nil {
+		return err
+	}
+	_ = exec.Command("launchctl", "unload", "-w", plistPath).Run()
+	if err := os.Remove(plistPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// launchdStatus consulta `launchctl list <label>` — si el label no está
+// cargado, launchctl devuelve error (servicio no instalado); si está
+// cargado pero el proceso no corre ahora, el campo "PID" del plist que
+// imprime es "-" en vez de un número.
+func launchdStatus(label string) string {
+	out, err := exec.Command("launchctl", "list", label).Output()
+	if err != nil {
+		return "no instalado"
+	}
+	if strings.Contains(string(out), `"PID" = `) {
+		return "active"
+	}
+	return "loaded (no corriendo ahora)"
 }
 
 // agentVersion se manda en cada heartbeat — Asterion Cloud lo muestra en el

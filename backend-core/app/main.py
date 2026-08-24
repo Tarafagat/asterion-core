@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.routers.api import router as api_router
+from app.routers.plugins import router as plugins_router
 
 app = FastAPI(title="Asterion Core — backend-core", version="0.1.0")
 
@@ -32,6 +33,7 @@ app.add_middleware(
 )
 
 app.include_router(api_router)
+app.include_router(plugins_router)
 
 _dist = Path(settings.frontend_dist_path)
 if _dist.is_dir():

@@ -10,8 +10,8 @@
 // deshacerlo (Rollback) — ver RequireSafeApply. Por eso hoy, en esta
 // primera fase, todos los adapters de este paquete son de solo lectura:
 // declaran Detect/Inspect/Plan, y Apply/Rollback quedan explícitamente
-// UNSUPPORTED hasta que exista un Safety Lab real donde probarlos (ver
-// internal/lab) — nunca se simula una capacidad que no se implementó.
+// UNSUPPORTED hasta que exista un Safety Lab real donde probarlos (ver el
+// módulo asterion-lab) — nunca se simula una capacidad que no se implementó.
 package safety
 
 import "fmt"

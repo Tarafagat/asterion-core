@@ -41,6 +41,10 @@ func main() {
 		agentCmd(),
 		firewallCmd(),
 		labCmd(),
+		vmCmd(),
+		containerCmd(),
+		imagesCmd(),
+		pluginsCmd(),
 	)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)

@@ -42,6 +42,14 @@ func InspectFirewall(detected []string) FirewallInspection {
 		return inspectNFTables()
 	case has("iptables"):
 		return inspectIPTables()
+	// La Application Firewall (System Settings → Network → Firewall) va
+	// antes que pf a propósito: es la que el usuario de macOS realmente
+	// prende/apaga, y a diferencia de pf se puede leer sin root — un
+	// resultado real gana a uno que de entrada va a decir "necesita sudo".
+	case has("application-firewall"):
+		return inspectApplicationFirewall()
+	case has("pf"):
+		return inspectPF()
 	default:
 		return FirewallInspection{Backend: "none", Readable: false, Detail: "no se detectó ningún firewall administrable conocido"}
 	}
@@ -98,4 +106,45 @@ func inspectIPTables() FirewallInspection {
 		return FirewallInspection{Backend: "iptables", Readable: false, Detail: "no se pudo consultar iptables: " + strings.TrimSpace(text)}
 	}
 	return FirewallInspection{Backend: "iptables", Readable: true, RawRules: strings.TrimSpace(text)}
+}
+
+// inspectApplicationFirewall lee el estado de la Application Firewall de
+// macOS (System Settings → Network → Firewall) — a diferencia de ufw/nft/
+// iptables, se puede consultar sin privilegios de root.
+func inspectApplicationFirewall() FirewallInspection {
+	out, err := exec.Command(socketfilterfwPath, "--getglobalstate").CombinedOutput()
+	text := strings.TrimSpace(string(out))
+	if err != nil {
+		return FirewallInspection{Backend: "application-firewall", Readable: false, Detail: "no se pudo consultar la Application Firewall: " + text}
+	}
+
+	var lines []string
+	lines = append(lines, text)
+	if out, err := exec.Command(socketfilterfwPath, "--getstealthmode").CombinedOutput(); err == nil {
+		lines = append(lines, strings.TrimSpace(string(out)))
+	}
+	if out, err := exec.Command(socketfilterfwPath, "--getblockall").CombinedOutput(); err == nil {
+		lines = append(lines, strings.TrimSpace(string(out)))
+	}
+
+	return FirewallInspection{Backend: "application-firewall", Readable: true, RawRules: strings.Join(lines, "\n")}
+}
+
+// inspectPF lee el estado real de pf (`pfctl -s info`) — el packet filter
+// de bajo nivel de macOS/BSD, por debajo de la Application Firewall.
+// pfctl exige root para leer /dev/pf, igual que ufw/nft/iptables en Linux
+// necesitan root para su propia consulta de estado.
+func inspectPF() FirewallInspection {
+	out, err := exec.Command("pfctl", "-s", "info").CombinedOutput()
+	text := string(out)
+	if needsPrivileges(err, text) {
+		return FirewallInspection{
+			Backend: "pf", Readable: false,
+			Detail: "pf necesita privilegios de root para leer /dev/pf — corré 'asterion local doctor' con sudo",
+		}
+	}
+	if err != nil {
+		return FirewallInspection{Backend: "pf", Readable: false, Detail: "no se pudo consultar pf: " + strings.TrimSpace(text)}
+	}
+	return FirewallInspection{Backend: "pf", Readable: true, RawRules: strings.TrimSpace(text)}
 }

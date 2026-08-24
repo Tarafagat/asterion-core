@@ -94,6 +94,47 @@ export interface DoctorReport {
   healthy: boolean;
 }
 
+// Plugins: integraciones de terceros que corren como proceso propio (su
+// propia API HTTP, su propio puerto) — ver asterion-core/internal/plugins.
+// Este frontend nunca sabe nada específico de un plugin puntual (SII, lo
+// que sea): todo lo que se muestra sale del manifest (plugin.yaml) que
+// declaró el propio plugin al instalarse.
+export interface PluginConfigField {
+  key: string;
+  label: string;
+  type: string;
+  secret?: boolean;
+  required?: boolean;
+  default?: string;
+}
+
+export interface PluginManifest {
+  name: string;
+  version: string;
+  description?: string;
+  author?: string;
+  repo?: string;
+  start: { command: string; args?: string[] };
+  port: number;
+  health_path?: string;
+  config_schema?: PluginConfigField[];
+}
+
+export type PluginStatus = "stopped" | "running" | "unhealthy";
+
+export interface Plugin {
+  external_ref: string;
+  name: string;
+  dir: string;
+  manifest: PluginManifest;
+  port?: number;
+  pid?: number;
+  status: PluginStatus;
+  connected_project_id?: number;
+  installed_at: string;
+  updated_at: string;
+}
+
 export const api = {
   authStatus: () => request<AuthStatus>("/auth/status"),
   loginWithToken: (token: string) => request<{ ok: boolean }>("/auth/token", { method: "POST", body: JSON.stringify({ token }) }),
@@ -105,4 +146,21 @@ export const api = {
     request<CostEstimate>("/cost-estimate", { method: "POST", body: JSON.stringify(spec) }),
   runtimeStatus: () => request<RuntimeStatus>("/runtime/status"),
   runtimeDoctor: () => request<DoctorReport>("/runtime/doctor"),
+  listPlugins: () => request<Plugin[]>("/plugins"),
+  installPlugin: (repoUrl: string, name?: string) =>
+    request<Plugin>("/plugins/install", { method: "POST", body: JSON.stringify({ repo_url: repoUrl, name }) }),
+  removePlugin: (name: string) => request<{ removed: string }>(`/plugins/${name}`, { method: "DELETE" }),
+  startPlugin: (name: string) => request<Plugin>(`/plugins/${name}/start`, { method: "POST" }),
+  stopPlugin: (name: string) => request<Plugin>(`/plugins/${name}/stop`, { method: "POST" }),
+  pluginConfig: (name: string) => request<Record<string, string>>(`/plugins/${name}/config`),
+  updatePluginConfig: (name: string, values: Record<string, string>) =>
+    request<{ updated: string; fields: number }>(`/plugins/${name}/config`, {
+      method: "PUT",
+      body: JSON.stringify({ values }),
+    }),
+  connectPlugin: (name: string, projectId: number) =>
+    request<{ installed: Plugin; already_connected: boolean }>(`/plugins/${name}/connect`, {
+      method: "POST",
+      body: JSON.stringify({ project_id: projectId }),
+    }),
 };

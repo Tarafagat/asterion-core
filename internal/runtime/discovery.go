@@ -57,6 +57,34 @@ func detectFromBinaries(candidates map[string]string) []string {
 	return found
 }
 
+// socketfilterfwPath es el binario de la Application Firewall de macOS
+// (System Settings → Network → Firewall) — no vive en el PATH normal, así
+// que se chequea por ruta fija en vez de exec.LookPath.
+const socketfilterfwPath = "/usr/libexec/ApplicationFirewall/socketfilterfw"
+
+// detectFirewall: en Linux, qué herramientas de firewall administrable
+// están instaladas (ufw/nftables/iptables/firewalld, vía detectFromBinaries
+// como el resto). macOS no tiene un "instalado o no" — pf y la Application
+// Firewall vienen siempre con el sistema operativo, así que acá se reporta
+// cuáles de los DOS existen en esta instalación concreta (por si alguna
+// vez falta alguno, ej. una imagen mínima) en vez de asumirlo. Cuál de los
+// dos está REALMENTE activo es un chequeo aparte — ver InspectFirewall en
+// firewall_inspect.go, igual que en Linux (Discover solo dice "existe",
+// nunca "está prendido").
+func detectFirewall() []string {
+	if runtime.GOOS == "darwin" {
+		found := []string{}
+		if _, err := exec.LookPath("pfctl"); err == nil {
+			found = append(found, "pf")
+		}
+		if _, err := os.Stat(socketfilterfwPath); err == nil {
+			found = append(found, "application-firewall")
+		}
+		return found
+	}
+	return detectFromBinaries(firewallBinaries)
+}
+
 func detectServiceManager() string {
 	if runtime.GOOS == "linux" {
 		if _, err := os.Stat("/run/systemd/system"); err == nil {
@@ -101,7 +129,7 @@ func Discover() (Environment, error) {
 		System:         info,
 		ServiceManager: detectServiceManager(),
 		Privileges:     detectPrivileges(),
-		Firewall:       detectFromBinaries(firewallBinaries),
+		Firewall:       detectFirewall(),
 		ReverseProxy:   detectFromBinaries(reverseProxyBinaries),
 		Tunnel:         detectFromBinaries(tunnelBinaries),
 		TLS:            detectTLS(),

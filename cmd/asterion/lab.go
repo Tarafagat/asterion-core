@@ -2,52 +2,131 @@ package main
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
-	"asterion-core/internal/lab"
+	"asterion-lab"
 )
 
-// labCmd es el Asterion Infrastructure Safety Lab: crear máquinas
-// desechables para probar cambios de infraestructura (firewall, SSH,
-// reverse proxy, tunnel) sin arriesgar producción — spec "Infrastructure
-// Safety Lab" §1-2.
-//
-// Estado real: ver internal/lab/lab.go. Sin un backend de virtualización
-// disponible (Docker o QEMU+KVM), estos comandos fallan con un mensaje
-// claro en vez de simular que crearon algo — nunca van a mostrar un
-// "✓ VM creada" si no se creó una VM de verdad.
+// labCmd es Asterion Lab: laboratorios de infraestructura reproducibles
+// definidos en YAML — crear, arrancar, parar, destruir. Cada laboratorio
+// es un conjunto de VMs reales (QEMU) y/o contenedores reales (Docker)
+// con red privada propia, pensado sobre todo para probar reglas de
+// firewall o una imagen Docker propia antes de aplicarlas/publicarlas
+// contra algo real. Se invoca directo desde el binario `asterion` (este
+// repo, asterion-core) pero toda la lógica vive en el módulo Go
+// asterion-lab, un repo hermano — ver su propio README para el detalle
+// de arquitectura, y la sección "Asterion Lab" más abajo en este README
+// para el ejemplo probado en vivo de punta a punta.
 func labCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "lab",
-		Short: "Infrastructure Safety Lab: entornos desechables para probar cambios de infraestructura antes de producción",
+		Short: "Laboratorios de infraestructura reproducibles (VMs QEMU y/o contenedores Docker definidos en YAML)",
 	}
 	root.AddCommand(
-		labCreateCmd(), labListCmd(), labStatusCmd(), labExecCmd(),
-		labDestroyCmd(), labTestCmd(), labRunCmd(),
+		labCreateCmd(), labStartCmd(), labStopCmd(), labDestroyCmd(),
+		labListCmd(), labStatusCmd(), labTestCmd(), labRunCmd(),
 	)
 	return root
 }
 
-func requireLabBackend() (lab.Backend, error) {
-	return lab.DetectBackend()
+func resolveLab(nameOrID string) (lab.LabState, error) {
+	if state, err := lab.LoadState(nameOrID); err == nil {
+		return state, nil
+	}
+	return lab.FindLabByName(nameOrID)
 }
 
 func labCreateCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "create <imagen>",
-		Short: "Crea un entorno desechable (ej. ubuntu-nginx)",
+		Use:   "create <archivo.yaml>",
+		Short: "Provisiona las VMs y contenedores de un laboratorio — no los arranca todavía",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backend, err := requireLabBackend()
+			spec, err := lab.LoadSpec(args[0])
 			if err != nil {
 				return err
 			}
-			env, err := backend.Create(lab.Spec{Image: args[0]})
+			state, err := lab.CreateLab(spec)
 			if err != nil {
 				return err
 			}
-			printJSON(env)
+			fmt.Printf(
+				"✓ Laboratorio %q creado (id %s), %d VM(s) y %d contenedor(es) provisionados\n",
+				state.Spec.Name, state.ID, len(state.VMs), len(state.Containers),
+			)
+			fmt.Printf("\nArrancalo con: asterion lab start %s\n", state.Spec.Name)
+			return nil
+		},
+	}
+}
+
+func labStartCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "start <nombre>",
+		Short: "Arranca todas las VMs del laboratorio, espera SSH, y aplica las reglas de firewall declaradas",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			state, err := resolveLab(args[0])
+			if err != nil {
+				return err
+			}
+			if err := lab.StartLab(&state); err != nil {
+				return err
+			}
+			if asJSON {
+				printJSON(state)
+				return nil
+			}
+			fmt.Printf("✓ Laboratorio %q corriendo\n", state.Spec.Name)
+			for _, vm := range state.VMs {
+				fmt.Printf("  - %s: ssh %s@127.0.0.1 -p %d (asterion vm ssh %s %s)\n", vm.Name, vm.SSHUser, vm.CtrlPort, state.Spec.Name, vm.Name)
+			}
+			for _, c := range state.Containers {
+				fmt.Printf("  - %s: contenedor %s (asterion container exec %s %s \"...\")\n", c.Name, c.Image, state.Spec.Name, c.Name)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el estado resultante como JSON")
+	return cmd
+}
+
+func labStopCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "stop <nombre>",
+		Short: "Detiene todas las VMs del laboratorio sin borrar nada",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			state, err := resolveLab(args[0])
+			if err != nil {
+				return err
+			}
+			if err := lab.StopLab(&state); err != nil {
+				return err
+			}
+			fmt.Printf("✓ Laboratorio %q detenido\n", state.Spec.Name)
+			return nil
+		},
+	}
+}
+
+func labDestroyCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "destroy <nombre>",
+		Short: "Detiene (si estaba corriendo) y borra el laboratorio entero: discos, seeds, logs, clave SSH",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			state, err := resolveLab(args[0])
+			if err != nil {
+				return err
+			}
+			if err := lab.DestroyLab(state); err != nil {
+				return err
+			}
+			fmt.Printf("✓ Laboratorio %q destruido\n", state.Spec.Name)
 			return nil
 		},
 	}
@@ -56,17 +135,16 @@ func labCreateCmd() *cobra.Command {
 func labListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "Lista los entornos desechables activos",
+		Short: "Lista los laboratorios conocidos en esta máquina",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backend, err := requireLabBackend()
+			labs, err := lab.ListLabs()
 			if err != nil {
 				return err
 			}
-			envs, err := backend.List()
-			if err != nil {
-				return err
+			for i := range labs {
+				lab.RefreshLabStatus(&labs[i])
 			}
-			printJSON(envs)
+			printJSON(labs)
 			return nil
 		},
 	}
@@ -74,103 +152,113 @@ func labListCmd() *cobra.Command {
 
 func labStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "Qué backend del laboratorio está disponible en esta máquina, si alguno",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			results := map[string]any{}
-			for _, b := range []lab.Backend{lab.DockerBackend{}, lab.QEMUBackend{}} {
-				ok, detail := b.Available()
-				entry := map[string]any{"available": ok}
-				if !ok {
-					entry["detail"] = detail
-				}
-				results[b.Name()] = entry
-			}
-			printJSON(results)
-			return nil
-		},
-	}
-}
-
-func labExecCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "exec <id> <comando...>",
-		Short: "Ejecuta un comando dentro de un entorno desechable",
-		Args:  cobra.MinimumNArgs(2),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			backend, err := requireLabBackend()
-			if err != nil {
-				return err
-			}
-			out, err := backend.Exec(args[0], args[1])
-			if err != nil {
-				return err
-			}
-			fmt.Println(out)
-			return nil
-		},
-	}
-}
-
-func labDestroyCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "destroy <id>",
-		Short: "Destruye un entorno desechable y libera sus recursos",
+		Use:   "status <nombre>",
+		Short: "Estado real de un laboratorio (reconcilia cada VM contra si su proceso sigue vivo)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			backend, err := requireLabBackend()
+			state, err := resolveLab(args[0])
 			if err != nil {
 				return err
 			}
-			return backend.Destroy(args[0])
+			lab.RefreshLabStatus(&state)
+			_ = lab.SaveState(state)
+			printJSON(state)
+			return nil
 		},
 	}
 }
 
 func labTestCmd() *cobra.Command {
-	var all bool
-	cmd := &cobra.Command{
-		Use:   "test [ssh|firewall|proxy|rollback]",
-		Short: "Corre un escenario del laboratorio (o todos con --all) contra un entorno desechable real",
-		Long: "Requiere un backend de laboratorio disponible (Docker o QEMU+KVM) — no hay una versión\n" +
-			"simulada de estas pruebas: si no hay backend, el comando falla en vez de reportar un\n" +
-			"resultado inventado.",
+	return &cobra.Command{
+		Use:   "test <nombre>",
+		Short: "Corre las aserciones de 'tests:' del YAML contra el laboratorio ya corriendo",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if !all && len(args) == 0 {
-				return fmt.Errorf("especificá un escenario (ssh|firewall|proxy|rollback) o --all")
-			}
-			_, err := requireLabBackend()
+			state, err := resolveLab(args[0])
 			if err != nil {
-				return fmt.Errorf("no se puede correr ningún test del laboratorio: %w", err)
+				return err
 			}
-			// Con un backend real disponible, acá se instanciarían y
-			// correrían los escenarios (spec §3-6) contra un Environment
-			// recién creado. Ningún backend concreto implementa Create
-			// todavía (ver internal/lab), así que este punto no se
-			// alcanza hoy — se deja explícito en vez de simular un PASS.
-			return fmt.Errorf("backend detectado pero los escenarios de prueba todavía no están implementados (ver internal/lab/lab.go)")
+			results, err := lab.RunTests(state)
+			if err != nil {
+				return err
+			}
+			printJSON(results)
+			failed := 0
+			for _, r := range results {
+				if !r.Passed {
+					failed++
+				}
+			}
+			if failed > 0 {
+				return fmt.Errorf("%d/%d tests fallaron", failed, len(results))
+			}
+			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&all, "all", false, "Correr todos los escenarios")
-	return cmd
 }
 
 func labRunCmd() *cobra.Command {
-	var scenario string
+	var keepOnFailure bool
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "Crea un entorno efímero, corre un escenario, y lo destruye — todo en un solo comando",
+		Use:   "run <archivo.yaml>",
+		Short: "Laboratorio efímero: crea, arranca, corre los tests, y destruye todo — un solo comando",
+		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if scenario == "" {
-				return fmt.Errorf("falta --scenario")
-			}
-			_, err := requireLabBackend()
+			spec, err := lab.LoadSpec(args[0])
 			if err != nil {
-				return fmt.Errorf("no se puede correr el escenario %q: %w", scenario, err)
+				return err
 			}
-			return fmt.Errorf("backend detectado pero el flujo create→test→destroy todavía no está implementado (ver internal/lab/lab.go)")
+			state, err := lab.CreateLab(spec)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("✓ Laboratorio %q creado (id %s)\n", state.Spec.Name, state.ID)
+
+			destroy := func() {
+				if err := lab.DestroyLab(state); err != nil {
+					fmt.Fprintln(os.Stderr, "aviso: no pude destruir el laboratorio:", err)
+				} else {
+					fmt.Printf("✓ Laboratorio %q destruido\n", state.Spec.Name)
+				}
+			}
+
+			if err := lab.StartLab(&state); err != nil {
+				if !keepOnFailure {
+					destroy()
+				}
+				return err
+			}
+			fmt.Printf("✓ Laboratorio %q corriendo — corriendo tests\n", state.Spec.Name)
+
+			results, testErr := lab.RunTests(state)
+			printJSON(results)
+
+			if !keepOnFailure {
+				destroy()
+			} else if testErr != nil || anyFailed(results) {
+				fmt.Printf("Laboratorio %q dejado corriendo (--keep-on-failure) para inspeccionar: asterion lab destroy %s cuando termines\n", state.Spec.Name, state.Spec.Name)
+			} else {
+				destroy()
+			}
+
+			if testErr != nil {
+				return testErr
+			}
+			if anyFailed(results) {
+				return fmt.Errorf("algunos tests fallaron — ver detalle arriba")
+			}
+			return nil
 		},
 	}
-	cmd.Flags().StringVar(&scenario, "scenario", "", "Nombre del escenario a correr (ej. firewall-ssh)")
+	cmd.Flags().BoolVar(&keepOnFailure, "keep-on-failure", false, "No destruir el laboratorio si algún test falla, para poder inspeccionarlo")
 	return cmd
+}
+
+func anyFailed(results []lab.TestResult) bool {
+	for _, r := range results {
+		if !r.Passed {
+			return true
+		}
+	}
+	return false
 }

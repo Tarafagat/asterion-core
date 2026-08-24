@@ -154,6 +154,23 @@ func (c *Client) ConnectLocalInstance(projectID int, payload map[string]any) (ma
 	return out, err
 }
 
+// ConnectLocalPlugin vincula un plugin instalado localmente
+// (asterion plugin install) a un proyecto de Asterion Cloud, sin
+// duplicarlo: si externalRef ya está conectado, la API devuelve el mismo
+// registro en vez de crear uno nuevo (POST /projects/{id}/plugins/connect-local).
+func (c *Client) ConnectLocalPlugin(projectID int, payload map[string]any) (map[string]any, error) {
+	var out map[string]any
+	err := c.do(http.MethodPost, fmt.Sprintf("/projects/%d/plugins/connect-local", projectID), payload, &out)
+	return out, err
+}
+
+// ListPlugins lista los plugins conectados a un proyecto.
+func (c *Client) ListPlugins(projectID int) ([]map[string]any, error) {
+	var out []map[string]any
+	err := c.do(http.MethodGet, fmt.Sprintf("/projects/%d/plugins", projectID), nil, &out)
+	return out, err
+}
+
 // CreateInstanceAPIKey genera una API key nueva para que asterion agent-run
 // pueda reportar métricas de una instancia (POST /instances/{id}/api-keys).
 // La clave cruda solo se devuelve en esta llamada — no se puede volver a leer.
