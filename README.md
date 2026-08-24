@@ -154,11 +154,15 @@ completo (variables de entorno, endpoints) en
 
 ### Instalación (una vez)
 
-```bash
-cd asterion-core/backend-core
-python3 -m venv venv && venv/bin/pip install -r requirements.txt
+`backend-core/venv` se crea solo la primera vez que corrés `asterion local
+serve` (crea el venv, instala `requirements.txt`) — no hace falta prepararlo
+a mano. Si tu `python3` del PATH es muy nuevo para alguna dependencia
+(pydantic-core/PyO3 suele ser la primera en fallar en versiones de Python
+recién salidas), pasá `--python /ruta/a/otro/python3` con una versión más
+estable. `frontend-core` sí hay que compilarlo aparte, una vez:
 
-cd ../frontend-core
+```bash
+cd asterion-core/frontend-core
 pnpm install
 pnpm build
 ```
@@ -173,9 +177,15 @@ para armar cualquiera de los dos desde cero.
 ```bash
 asterion local serve
 # Token de acceso generado: 7f3a9c21...
-# Guardado (hasheado) en ~/.config/asterion/local-auth.yaml — no se vuelve a mostrar.
+# Guardado (hasheado) en ~/Library/Application Support/asterion/local-auth.yaml — no se vuelve a mostrar.
 # Abrí http://127.0.0.1:8091 y pegá ese token.
 ```
+
+(La ruta exacta depende del SO — `os.UserConfigDir()` de Go: `~/Library/Application
+Support/asterion` en macOS, `~/.config/asterion` en Linux, `%AppData%\asterion` en
+Windows. El mensaje siempre imprime la real, nunca una asumida — `backend-core`
+la resuelve con el mismo criterio, ver `app/config.py`, para que ambos lados
+miren siempre el mismo archivo.)
 
 La primera vez imprime el token — copialo, no queda en ningún otro lado en
 texto plano. Las siguientes veces reusa el que ya existe (avisa que lo está
@@ -185,6 +195,25 @@ reusando, no lo vuelve a mostrar). Si lo perdiste:
 asterion local auth rotate    # genera uno nuevo, invalida el anterior
 asterion local auth status    # si hay uno configurado y desde cuándo (nunca el secreto)
 ```
+
+Por default `local serve` bloquea la terminal (Ctrl-C para parar). Con
+`--background` queda corriendo solo, desvinculado de la sesión (mismo
+mecanismo que usan los plugins), y devuelve el control enseguida:
+
+```bash
+asterion local serve --background
+# ✓ Dashboard local corriendo en segundo plano — http://127.0.0.1:60522 (pid 52021)
+#   logs: .../asterion/logs/local-serve.log
+#   detenerlo: asterion local stop (o el botón de apagar dentro del dashboard)
+
+asterion local stop
+```
+
+También se puede apagar desde el propio dashboard — botón "Apagar
+dashboard" junto a "Cerrar sesión", una vez logueado. Los tres caminos
+(Ctrl-C en primer plano, `asterion local stop`, el botón del frontend)
+terminan en lo mismo: `SIGTERM` al proceso, que uvicorn maneja de forma
+prolija.
 
 ## Estructura
 

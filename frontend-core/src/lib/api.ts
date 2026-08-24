@@ -139,6 +139,7 @@ export const api = {
   authStatus: () => request<AuthStatus>("/auth/status"),
   loginWithToken: (token: string) => request<{ ok: boolean }>("/auth/token", { method: "POST", body: JSON.stringify({ token }) }),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  shutdown: () => request<{ ok: boolean }>("/local/shutdown", { method: "POST" }),
   me: () => request<{ authenticated: boolean }>("/me"),
   info: () => request<MachineInfo>("/info"),
   metrics: () => request<Snapshot>("/metrics"),

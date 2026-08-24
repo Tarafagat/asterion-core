@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -11,6 +12,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"asterion-core/internal/localauth"
+	"asterion-core/internal/localserve"
+	"asterion-core/internal/plugins"
 	"asterion-core/internal/runtime"
 	"asterion-core/internal/safety"
 	"asterion-core/internal/sysinfo"
@@ -27,7 +30,7 @@ func localCmd() *cobra.Command {
 		Use:   "local",
 		Short: "Preguntas sobre esta máquina: qué es y cuánto está usando (datos crudos, sin costo)",
 	}
-	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd())
+	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd())
 	return root
 }
 
@@ -44,9 +47,15 @@ func localStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			state, running, _ := localserve.Status()
+			var localServe any
+			if running {
+				localServe = state
+			}
 			printJSON(map[string]any{
 				"environment":         env,
 				"config":              cfg,
+				"local_serve":         localServe,
 				"ssh":                 runtime.DiscoverSSH(),
 				"network":             runtime.DiscoverNetwork(),
 				"safety_capabilities": safetyCapabilities(),
@@ -88,6 +97,7 @@ func localDoctorCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			applyLiveServicePort(&cfg)
 			report := runtime.RunDoctor(env, cfg)
 			printJSON(report)
 			if !report.Healthy {
@@ -95,6 +105,19 @@ func localDoctorCmd() *cobra.Command {
 			}
 			return nil
 		},
+	}
+}
+
+// applyLiveServicePort pisa cfg.ServicePort con el puerto real de una
+// instancia de 'local serve --background' corriendo, si hay una. Sin esto,
+// 'asterion local doctor' compara contra el puerto declarado en
+// runtime.json (8091 por default) — que en modo --background es solo una
+// PREFERENCIA, no una garantía: si 8091 ya estaba ocupado por otra cosa, el
+// dashboard terminó escuchando en otro puerto, y doctor reportaría un falso
+// negativo ("nada responde en 8091") aunque el dashboard esté sano.
+func applyLiveServicePort(cfg *runtime.Config) {
+	if state, running, _ := localserve.Status(); running && state.Port != 0 {
+		cfg.ServicePort = state.Port
 	}
 }
 
@@ -249,38 +272,53 @@ func setConfigKey(cfg *runtime.Config, key, value string) error {
 func localServeCmd() *cobra.Command {
 	var dir string
 	var port int
+	var pythonBin string
+	var background bool
 
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Levantar el dashboard local (backend-core + frontend-core) con un token propio, sin Google/Firebase",
 		Long: "Arranca backend-core (Python/FastAPI) en un puerto libre, sirviendo su mini API y el\n" +
-			"dashboard de frontend-core. Requiere que asterion-core/backend-core tenga sus dependencias\n" +
-			"instaladas (python3 -m venv venv && venv/bin/pip install -r requirements.txt) y que\n" +
-			"frontend-core esté compilado (pnpm build) — ver asterion-core/README.md.\n\n" +
+			"dashboard de frontend-core. Si backend-core/venv no existe todavía, se crea solo (python3 -m\n" +
+			"venv venv && venv/bin/pip install -r requirements.txt) — no hace falta prepararlo a mano.\n" +
+			"frontend-core sí necesita estar compilado por separado (pnpm build) — ver asterion-core/README.md.\n\n" +
 			"El login ya no usa Google/Firebase: la primera vez que corrés esto se genera un token\n" +
 			"propio (ver internal/localauth) que se imprime UNA sola vez acá abajo — pegalo en el\n" +
 			"dashboard para entrar. Si ya existe uno de una corrida anterior, se reusa (no se vuelve a\n" +
-			"mostrar: solo se guarda su hash). Perdiste el token: 'asterion local auth rotate'.",
+			"mostrar: solo se guarda su hash). Perdiste el token: 'asterion local auth rotate'.\n\n" +
+			"--background lo deja corriendo después de que este comando termine (mismo criterio que\n" +
+			"'asterion plugin start'): parar con 'asterion local stop', o el botón de apagar del propio\n" +
+			"dashboard (arriba a la derecha, una vez logueado).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			backendCoreDir, err := resolveBackendCoreDir(dir)
 			if err != nil {
 				return err
 			}
 
+			if background {
+				if _, alive, statusErr := localserve.Status(); statusErr == nil && alive {
+					return fmt.Errorf("el dashboard local ya está corriendo en segundo plano — 'asterion local stop' primero si querés reiniciarlo")
+				}
+			}
+
 			token, isNew, err := localauth.EnsureToken()
 			if err != nil {
 				return fmt.Errorf("no se pudo preparar el token de acceso local: %w", err)
 			}
+			authPath, _ := localauth.Path()
 			if isNew {
-				fmt.Println(localauth.FormatFirstRun(token))
+				fmt.Println(localauth.FormatFirstRun(token, authPath))
 			} else {
-				fmt.Println("Usando el token de acceso ya generado (~/.config/asterion/local-auth.yaml). 'asterion local auth rotate' genera uno nuevo si lo perdiste.")
+				fmt.Printf("Usando el token de acceso ya generado (%s). 'asterion local auth rotate' genera uno nuevo si lo perdiste.\n", authPath)
 			}
 
-			python := filepath.Join(backendCoreDir, "venv", "bin", "python")
-			if _, err := os.Stat(python); err != nil {
-				python = "python3"
-				fmt.Println("aviso: no encontré backend-core/venv — usando python3 del sistema (puede faltar instalar dependencias)")
+			python, err := ensureBackendCoreVenv(backendCoreDir, pythonBin)
+			if err != nil {
+				return err
+			}
+
+			if background {
+				return runBackendCoreBackground(backendCoreDir, python, port)
 			}
 
 			run := exec.Command(python, "-m", "app.main")
@@ -299,7 +337,158 @@ func localServeCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "Ruta a asterion-core/backend-core (default: la busca en ubicaciones comunes)")
 	cmd.Flags().IntVar(&port, "port", 0, "Puerto fijo (default: el sistema elige uno libre)")
+	cmd.Flags().StringVar(&pythonBin, "python", "", "Intérprete de Python 3 a usar si hay que crear el venv (default: 'python3' del PATH)")
+	cmd.Flags().BoolVarP(&background, "background", "b", false, "Dejarlo corriendo en segundo plano en vez de bloquear la terminal")
 	return cmd
+}
+
+// runBackendCoreBackground arranca backend-core desvinculado de esta
+// sesión (mismo mecanismo que internal/plugins usa para plugins: Setsid +
+// Release) y guarda pid/puerto/log en internal/localserve para que
+// 'asterion local stop' (o el botón de apagar del dashboard) lo pueda
+// encontrar después. El puerto lo elige Go de entrada — a diferencia del
+// modo en primer plano, acá no hay terminal donde leer qué puerto anunció
+// Python, así que Go se lo pasa siempre explícito por env var.
+func runBackendCoreBackground(backendCoreDir, python string, explicitPort int) error {
+	port := explicitPort
+	if port == 0 {
+		preferred := runtime.DefaultConfig().ServicePort
+		if cfg, err := runtime.LoadConfig(); err == nil {
+			preferred = cfg.ServicePort
+		}
+		p, err := preferredFreePort(preferred, 20)
+		if err != nil {
+			return fmt.Errorf("no pude reservar un puerto libre: %w", err)
+		}
+		port = p
+	}
+
+	logPath, err := localserve.LogPath()
+	if err != nil {
+		return err
+	}
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return err
+	}
+	defer logFile.Close()
+
+	run := exec.Command(python, "-m", "app.main")
+	run.Dir = backendCoreDir
+	run.Env = append(os.Environ(), fmt.Sprintf("BACKEND_CORE_PORT=%d", port))
+	run.Stdout = logFile
+	run.Stderr = logFile
+	localserve.SetDetached(run)
+
+	if err := run.Start(); err != nil {
+		return fmt.Errorf("no pude arrancar backend-core: %w", err)
+	}
+	pid := run.Process.Pid
+	_ = run.Process.Release()
+
+	if err := localserve.SaveState(localserve.State{
+		PID: pid, Port: port, LogPath: logPath, StartedAt: time.Now(),
+	}); err != nil {
+		return fmt.Errorf("el proceso arrancó (pid %d) pero no pude guardar su estado: %w", pid, err)
+	}
+
+	fmt.Printf("✓ Dashboard local corriendo en segundo plano — http://127.0.0.1:%d (pid %d)\n", port, pid)
+	fmt.Printf("  logs: %s\n", logPath)
+	fmt.Println("  detenerlo: asterion local stop (o el botón de apagar dentro del dashboard)")
+	return nil
+}
+
+// preferredFreePort intenta preferred, preferred+1, ... hasta tries veces
+// antes de resignarse a que el sistema operativo elija cualquier puerto
+// libre — mismo criterio (y mismo rango) que find_free_port() en
+// backend-core/app/main.py, para que el puerto en el que termina
+// escuchando el dashboard en segundo plano sea el mismo que 'asterion
+// local doctor'/'status' ya esperan encontrar (Config.ServicePort, default
+// 8091) en el caso normal de una sola instancia corriendo. Si preferred ya
+// está ocupado por otra cosa, tanto esto como Python se corren al
+// siguiente — la única garantía real es "un puerto libre", nunca "EL
+// puerto 8091 específicamente".
+func preferredFreePort(preferred, tries int) (int, error) {
+	for port := preferred; port < preferred+tries; port++ {
+		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			continue
+		}
+		l.Close()
+		return port, nil
+	}
+	return plugins.FreePort()
+}
+
+// localStopCmd detiene el dashboard arrancado con 'local serve --background'.
+func localStopCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "stop",
+		Short: "Detiene el dashboard local arrancado con 'local serve --background'",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			state, err := localserve.Stop()
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				printJSON(state)
+				return nil
+			}
+			fmt.Printf("✓ Dashboard local detenido (pid %d, puerto %d)\n", state.PID, state.Port)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el resultado como JSON en vez de texto")
+	return cmd
+}
+
+// ensureBackendCoreVenv devuelve la ruta al Python del venv de backend-core,
+// creándolo (y sus dependencias) si todavía no existe — antes esto solo
+// avisaba y caía al python3 del sistema, que casi nunca tiene fastapi
+// instalado. pythonBin es el intérprete a usar SOLO para crear el venv
+// (una vez creado, siempre se usa el de adentro del venv, nunca el del
+// sistema, para no mezclar paquetes).
+func ensureBackendCoreVenv(backendCoreDir, pythonBin string) (string, error) {
+	venvDir := filepath.Join(backendCoreDir, "venv")
+	venvPython := filepath.Join(venvDir, "bin", "python")
+	if _, err := os.Stat(venvPython); err == nil {
+		return venvPython, nil
+	}
+
+	if pythonBin == "" {
+		pythonBin = "python3"
+	}
+	if _, err := exec.LookPath(pythonBin); err != nil {
+		return "", fmt.Errorf("no encontré %q en el PATH para crear el entorno virtual de backend-core — instalá Python 3 o pasá --python /ruta/a/tu/python3", pythonBin)
+	}
+
+	fmt.Printf("No encontré backend-core/venv — creándolo con %s...\n", pythonBin)
+	create := exec.Command(pythonBin, "-m", "venv", venvDir)
+	create.Stdout = os.Stdout
+	create.Stderr = os.Stderr
+	if err := create.Run(); err != nil {
+		return "", fmt.Errorf("no pude crear el entorno virtual: %w", err)
+	}
+
+	fmt.Println("Instalando dependencias (requirements.txt) — puede tardar un minuto la primera vez...")
+	install := exec.Command(filepath.Join(venvDir, "bin", "pip"), "install", "-r", "requirements.txt")
+	install.Dir = backendCoreDir
+	install.Stdout = os.Stdout
+	install.Stderr = os.Stderr
+	if err := install.Run(); err != nil {
+		_ = os.RemoveAll(venvDir) // no dejar un venv a medio instalar — el próximo 'serve' lo confundiría con uno completo
+		return "", fmt.Errorf(
+			"no pude instalar las dependencias de backend-core con %s: %w\n\n"+
+				"Si el error de arriba menciona que tu versión de Python es demasiado nueva para alguna "+
+				"dependencia (pydantic-core/PyO3 suele ser la primera en fallar), instalá una versión más "+
+				"estable (ej. 'brew install python@3.13') y reintentá con --python /opt/homebrew/bin/python3.13",
+			pythonBin, err,
+		)
+	}
+
+	fmt.Println("✓ entorno virtual de backend-core listo")
+	return venvPython, nil
 }
 
 // localAuthCmd administra el token de acceso al dashboard local — ver
@@ -338,7 +527,8 @@ func localAuthRotateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Println(localauth.FormatFirstRun(token))
+			authPath, _ := localauth.Path()
+			fmt.Println(localauth.FormatFirstRun(token, authPath))
 			return nil
 		},
 	}

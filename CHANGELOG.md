@@ -54,3 +54,34 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
   propósito, para maximizar la adopción del ecosistema de plugins. Ver
   la sección "Licencia" del README para el porqué de la separación
   respecto a la licencia de Asterion Cloud (AGPLv3).
+- `asterion local serve` ya no requiere preparar `backend-core/venv` a
+  mano: si no existe, lo crea e instala `requirements.txt` solo (antes
+  avisaba y caía silenciosamente al `python3` del sistema, que casi nunca
+  tiene `fastapi` instalado). Nuevo flag `--python` para elegir qué
+  intérprete usar al crearlo, por si el `python3` del PATH es demasiado
+  nuevo para alguna dependencia pineada.
+- `asterion local serve --background`: lo deja corriendo desvinculado de la
+  sesión (mismo mecanismo que los plugins) en vez de bloquear la terminal.
+  Nuevo `asterion local stop`, y un botón "Apagar dashboard" en el propio
+  frontend (`POST /api/local/shutdown`) — los tres caminos de apagado
+  (Ctrl-C, `local stop`, el botón) mandan la misma señal al mismo proceso.
+
+### Fixed
+- **Bug real de login**: `backend-core` (Python) asumía `~/.config/asterion`
+  a mano para encontrar `local-auth.yaml`/`credentials.json`, pero el CLI
+  (Go) los escribe con `os.UserConfigDir()` — que en macOS es
+  `~/Library/Application Support/asterion`, no `~/.config/asterion`. El
+  resultado: login rechazado con "no se generó un token" aunque sí existía,
+  y el refresh de precios desde Cloud silenciosamente sin credenciales, en
+  cualquier instalación de macOS o Windows. `app/config.py` ahora replica la
+  resolución exacta de `os.UserConfigDir()` de Go.
+- `asterion local serve --background` elegía un puerto puramente al azar
+  del sistema operativo, desacoplado del `service_port` (8091 por default)
+  que `asterion local doctor`/`status` ya esperaban — el resultado era un
+  dashboard corriendo de verdad pero `doctor` reportándolo caído ("nada
+  responde en 127.0.0.1:8091"). Ahora el modo background prueba primero
+  8091 (y hasta 20 puertos siguientes) antes de resignarse a uno al azar —
+  mismo criterio que ya usaba `find_free_port()` en Python para el modo en
+  primer plano — y `doctor`/`status` además usan el puerto real de una
+  instancia en segundo plano si hay una corriendo, en vez de solo el
+  declarado.

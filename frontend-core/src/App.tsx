@@ -16,6 +16,7 @@ export default function App() {
   const [authStatus, setAuthStatus] = useState<AuthStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loggingIn, setLoggingIn] = useState(false);
+  const [shuttingDown, setShuttingDown] = useState(false);
 
   useEffect(() => {
     api.authStatus().then(setAuthStatus);
@@ -43,6 +44,14 @@ export default function App() {
     setAuthenticated(false);
   }
 
+  async function handleShutdown() {
+    if (!window.confirm("¿Apagar el dashboard local? Vas a tener que correr 'asterion local serve' de nuevo para volver a entrar.")) {
+      return;
+    }
+    await api.shutdown();
+    setShuttingDown(true);
+  }
+
   return (
     <div className="app-shell">
       <div className="topbar">
@@ -50,8 +59,16 @@ export default function App() {
         <span className="badge">Dashboard local</span>
       </div>
       <main>
-        {authenticated === undefined ? null : authenticated ? (
-          <Dashboard onLogout={handleLogout} />
+        {shuttingDown ? (
+          <div className="card centered-message">
+            <p className="section-title">Dashboard apagado</p>
+            <p className="hint">
+              El proceso de backend-core se detuvo. Corré <code>asterion local serve</code> (o{" "}
+              <code>asterion local serve --background</code>) de nuevo cuando quieras volver a entrar.
+            </p>
+          </div>
+        ) : authenticated === undefined ? null : authenticated ? (
+          <Dashboard onLogout={handleLogout} onShutdown={handleShutdown} />
         ) : (
           <LoginScreen authStatus={authStatus} error={error} loggingIn={loggingIn} onLogin={handleTokenLogin} />
         )}
@@ -114,7 +131,7 @@ function LoginScreen({
   );
 }
 
-function Dashboard({ onLogout }: { onLogout: () => void }) {
+function Dashboard({ onLogout, onShutdown }: { onLogout: () => void; onShutdown: () => void }) {
   const [info, setInfo] = useState<MachineInfo | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [cost, setCost] = useState<CostEstimate | null>(null);
@@ -160,9 +177,14 @@ function Dashboard({ onLogout }: { onLogout: () => void }) {
     <div className="dashboard">
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span className="hint">Sesión local activa</span>
-        <button className="link" onClick={onLogout}>
-          Cerrar sesión
-        </button>
+        <div style={{ display: "flex", gap: "1rem" }}>
+          <button className="link" onClick={onLogout}>
+            Cerrar sesión
+          </button>
+          <button className="link" onClick={onShutdown} title="Detiene el proceso de backend-core en esta máquina">
+            Apagar dashboard
+          </button>
+        </div>
       </div>
 
       {info && (

@@ -43,6 +43,15 @@ func path() (string, error) {
 	return filepath.Join(dir, "local-auth.yaml"), nil
 }
 
+// Path expone la ruta real del archivo — os.UserConfigDir() NO es
+// "~/.config" en todos lados (en macOS es "~/Library/Application Support",
+// en Windows "%AppData%"), así que ningún mensaje al usuario debería
+// hardcodear "~/.config/asterion/..." como si lo fuera; hay que preguntarle
+// a esta función.
+func Path() (string, error) {
+	return path()
+}
+
 func hash(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
@@ -148,10 +157,10 @@ func Verify(token string) (bool, error) {
 
 // FormatFirstRun es el bloque que se imprime en `asterion local serve`
 // cuando se generó un token nuevo — solo esta vez va a mostrarse en texto
-// plano.
-func FormatFirstRun(token string) string {
+// plano. path es la ruta real (ver Path()), no una asumida.
+func FormatFirstRun(token, path string) string {
 	return fmt.Sprintf(
-		"Token de acceso generado: %s\nGuardado (hasheado) en ~/.config/asterion/local-auth.yaml — este token no se vuelve a mostrar, guardalo ahora.\nPegalo en el dashboard para entrar. Si lo perdés: 'asterion local auth rotate'.",
-		token,
+		"Token de acceso generado: %s\nGuardado (hasheado) en %s — este token no se vuelve a mostrar, guardalo ahora.\nPegalo en el dashboard para entrar. Si lo perdés: 'asterion local auth rotate'.",
+		token, path,
 	)
 }
