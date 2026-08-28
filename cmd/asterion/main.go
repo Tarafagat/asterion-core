@@ -37,6 +37,7 @@ func main() {
 		provisionCmd(),
 		capabilitiesCmd(),
 		providersCmd(),
+		coreCmd(),
 		agentRunCmd(),
 		agentCmd(),
 		firewallCmd(),

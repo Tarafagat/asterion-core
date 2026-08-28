@@ -9,6 +9,13 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
+- **`asterion core serve`**: el servicio de Provider Adapters
+  (AWS/Azure/GCP/OCI) ahora también corre como subcomando del CLI, mismo
+  puerto default (`:8090`) y misma lógica que el binario standalone
+  `cmd/asterion-core` (que sigue existiendo aparte, para casos como una
+  imagen de contenedor mínima con solo este servicio) — para no tener que
+  compilar/distribuir un segundo binario solo para levantarlo en un
+  deploy.
 - **Sistema de plugins de terceros**: `asterion plugin install/config/
   start/stop/list/remove/connect` — cada plugin corre como proceso propio
   en un puerto libre elegido automáticamente, con configuración cifrada

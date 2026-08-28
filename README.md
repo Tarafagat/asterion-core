@@ -285,10 +285,23 @@ go install ./cmd/asterion
 
 ## Levantar asterion-core
 
+Dos formas equivalentes — misma lógica, mismo puerto default (`:8090`):
+
 ```bash
-./asterion-core                       # escucha en :8090
-ASTERION_CORE_ADDR=:9000 ./asterion-core  # puerto custom
+# Como subcomando del CLI (no hace falta compilar un binario aparte)
+asterion core serve
+ASTERION_CORE_ADDR=:9000 asterion core serve   # puerto custom por variable de entorno
+asterion core serve --addr :9000               # o por flag
+
+# Binario standalone — útil para, por ejemplo, una imagen de contenedor
+# mínima con solo este servicio, sin el resto del CLI
+./asterion-core
+ASTERION_CORE_ADDR=:9000 ./asterion-core
 ```
+
+Corre en primer plano (`Ctrl-C` para parar) — para dejarlo corriendo de
+verdad, administralo con systemd/tu gestor de procesos igual que cualquier
+otro servicio (no tiene su propio modo `--background` como `local serve`).
 
 La API de Asterion (backend Python) apunta a esto con `CORE_SERVICE_URL`
 en su `.env` (default `http://localhost:8090`). Si asterion-core no está
