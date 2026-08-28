@@ -113,6 +113,19 @@ func Start(name string) (Installed, error) {
 		return installed, fmt.Errorf("el plugin %q ya está corriendo (pid %d, puerto %d)", name, installed.PID, installed.Port)
 	}
 
+	// Releer el manifest desde disco antes de arrancar: 'start' es un punto
+	// natural para resincronizar contra ediciones hechas directo al
+	// plugin.yaml (ej. 'asterion plugin from-ast --force', o un --link
+	// donde el autor sigue editando su propia carpeta) sin tener que
+	// reinstalar. El manifest guardado en state.json es una foto de cuando
+	// se instaló — sin este refresh, quedaría permanentemente desactualizado
+	// para cualquier plugin que evolucione después de instalado. Si la
+	// lectura falla (plugin.yaml roto en ese momento), se sigue con el
+	// último manifest válido conocido en vez de bloquear el arranque.
+	if fresh, err := LoadManifest(installed.Dir); err == nil {
+		installed.Manifest = fresh
+	}
+
 	port := installed.Manifest.Port
 	if port == 0 {
 		port, err = freePort()

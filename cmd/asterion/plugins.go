@@ -35,6 +35,7 @@ func pluginsCmd() *cobra.Command {
 		pluginValidateCmd(),
 		pluginDevCmd(),
 		pluginFromOpenAPICmd(),
+		pluginFromASTCmd(),
 	)
 	return root
 }
@@ -107,12 +108,21 @@ func pluginValidateCmd() *cobra.Command {
 func pluginInstallCmd() *cobra.Command {
 	var name string
 	var asJSON bool
+	var link bool
 	cmd := &cobra.Command{
-		Use:   "install <repo-url>",
-		Short: "Instala un plugin clonando su repo (público o privado — usa tus credenciales de git)",
-		Args:  cobra.ExactArgs(1),
+		Use:   "install <repo-url-o-carpeta>",
+		Short: "Instala un plugin clonando su repo, o con --link, registra una carpeta local tal cual (sin copiarla)",
+		Long: "Sin --link: clona <repo-url> (público o privado — usa tus credenciales de git) a\n" +
+			"~/.config/asterion/plugins/repos/<name>.\n\n" +
+			"Con --link: NO clona ni copia nada — registra la carpeta indicada tal cual está,\n" +
+			"pensado para desarrollar (o simplemente probar) un plugin privado sin publicarlo a\n" +
+			"ningún repo, ni siquiera tener uno local. Los cambios que hagas en el código se ven\n" +
+			"la próxima vez que lo arranques (compilalo vos, Asterion nunca compila nada). Por\n" +
+			"seguridad, 'asterion plugin remove' de un plugin --link NUNCA borra la carpeta —\n" +
+			"solo lo desregistra.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			installed, err := plugins.Install(args[0], name)
+			installed, err := plugins.Install(args[0], name, link)
 			if err != nil {
 				return err
 			}
@@ -120,11 +130,18 @@ func pluginInstallCmd() *cobra.Command {
 				printJSON(installed)
 				return nil
 			}
-			fmt.Printf("✓ Plugin %q instalado (%s)\n", installed.Name, installed.Manifest.Version)
+			verb := "instalado"
+			if link {
+				verb = "vinculado (sin copiar)"
+			}
+			fmt.Printf("✓ Plugin %q %s (%s)\n", installed.Name, verb, installed.Manifest.Version)
 			if installed.Manifest.Description != "" {
 				fmt.Println("  " + installed.Manifest.Description)
 			}
 			fmt.Println("  id local:", installed.ExternalRef)
+			if link {
+				fmt.Println("  carpeta:", installed.Dir)
+			}
 			if len(installed.Manifest.ConfigSchema) > 0 {
 				fmt.Println("\nEste plugin necesita configuración antes de arrancar:")
 				for _, f := range installed.Manifest.ConfigSchema {
@@ -140,8 +157,9 @@ func pluginInstallCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&name, "name", "", "Nombre a usar si no coincide con el que se puede derivar de la URL")
+	cmd.Flags().StringVar(&name, "name", "", "Nombre a usar si no coincide con el que se puede derivar de la URL/plugin.yaml")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el registro instalado como JSON en vez de texto (lo usa backend-core)")
+	cmd.Flags().BoolVar(&link, "link", false, "Registrar una carpeta local tal cual, sin clonar ni copiar — para plugins privados en desarrollo")
 	return cmd
 }
 

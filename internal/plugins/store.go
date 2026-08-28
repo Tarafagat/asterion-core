@@ -19,9 +19,17 @@ import (
 // secuencial), que identifica el recurso sea cual sea el modo de
 // administración (local o Cloud).
 type Installed struct {
-	ExternalRef        string    `json:"external_ref"`
-	Name               string    `json:"name"`
-	Dir                string    `json:"dir"`
+	ExternalRef string `json:"external_ref"`
+	Name        string `json:"name"`
+	Dir         string `json:"dir"`
+	// Linked es true para un plugin instalado con 'plugin install --link':
+	// Dir apunta directo a una carpeta del usuario (nunca clonada/copiada
+	// a BaseDir/repos), pensado para desarrollo local de plugins privados
+	// sin necesitar ni siquiera un repo git. Existe pura y exclusivamente
+	// para que Uninstall sepa que NUNCA debe borrar Dir — ver el comentario
+	// ahí. Un plugin instalado por 'install <repo-url>' normal siempre
+	// tiene Linked=false.
+	Linked             bool      `json:"linked,omitempty"`
 	Manifest           Manifest  `json:"manifest"`
 	Port               int       `json:"port,omitempty"`
 	PID                int       `json:"pid,omitempty"`

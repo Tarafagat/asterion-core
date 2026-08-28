@@ -108,16 +108,64 @@ export interface PluginConfigField {
   default?: string;
 }
 
+// Los campos de acá para abajo son del Asterion Plugin Contract (APC) —
+// todos opcionales porque un plugin.yaml de antes de que existiera el
+// contrato sigue siendo válido. Son los que permiten mostrar "usar este
+// plugin" (recursos/acciones) de forma genérica, sin que este frontend
+// sepa nada específico de ningún plugin puntual — ver asterion-plugin-contract.
+export interface PluginResource {
+  name: string;
+  endpoint: string;
+  schema?: string;
+  primary_key?: string;
+  crud?: string[];
+}
+
+export interface PluginAction {
+  name: string;
+  method: string;
+  endpoint: string;
+  description?: string;
+}
+
+export interface PluginPermissions {
+  network?: string[];
+  filesystem?: string[];
+  database?: boolean;
+  secrets?: boolean;
+}
+
 export interface PluginManifest {
   name: string;
   version: string;
   description?: string;
   author?: string;
+  license?: string;
   repo?: string;
+  contract_version?: string;
+  language?: { name?: string; version?: string };
   start: { command: string; args?: string[] };
   port: number;
   health_path?: string;
   config_schema?: PluginConfigField[];
+  api?: { base_path?: string; openapi?: string };
+  permissions?: PluginPermissions;
+  resources?: PluginResource[];
+  actions?: PluginAction[];
+  events?: { publishes?: string[]; subscribes?: string[] };
+}
+
+export interface PluginBrowseEntry {
+  name: string;
+  path: string;
+  has_manifest: boolean;
+}
+
+export interface PluginBrowseResult {
+  path: string;
+  parent: string | null;
+  has_manifest: boolean;
+  entries: PluginBrowseEntry[];
 }
 
 export type PluginStatus = "stopped" | "running" | "unhealthy";
@@ -148,8 +196,13 @@ export const api = {
   runtimeStatus: () => request<RuntimeStatus>("/runtime/status"),
   runtimeDoctor: () => request<DoctorReport>("/runtime/doctor"),
   listPlugins: () => request<Plugin[]>("/plugins"),
-  installPlugin: (repoUrl: string, name?: string) =>
-    request<Plugin>("/plugins/install", { method: "POST", body: JSON.stringify({ repo_url: repoUrl, name }) }),
+  installPlugin: (repoUrl: string, name?: string, link?: boolean) =>
+    request<Plugin>("/plugins/install", {
+      method: "POST",
+      body: JSON.stringify({ repo_url: repoUrl, name, link: link ?? false }),
+    }),
+  browsePluginDirs: (path?: string) =>
+    request<PluginBrowseResult>(`/plugins/browse-dirs${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   removePlugin: (name: string) => request<{ removed: string }>(`/plugins/${name}`, { method: "DELETE" }),
   startPlugin: (name: string) => request<Plugin>(`/plugins/${name}/start`, { method: "POST" }),
   stopPlugin: (name: string) => request<Plugin>(`/plugins/${name}/stop`, { method: "POST" }),
@@ -163,5 +216,15 @@ export const api = {
     request<{ installed: Plugin; already_connected: boolean }>(`/plugins/${name}/connect`, {
       method: "POST",
       body: JSON.stringify({ project_id: projectId }),
+    }),
+  // Llama a un endpoint que el propio plugin expone (un resource o una
+  // action de su plugin.yaml) a través del reverse proxy de backend-core
+  // (/api/plugins/<name>/proxy/*) — el navegador nunca le habla directo al
+  // puerto del plugin. fullPath ya viene con api.base_path + el endpoint
+  // declarado (ej. "/api/v1/files").
+  pluginProxy: <T = unknown>(name: string, method: string, fullPath: string, body?: unknown) =>
+    request<T>(`/plugins/${name}/proxy${fullPath}`, {
+      method,
+      body: body === undefined ? undefined : JSON.stringify(body),
     }),
 };

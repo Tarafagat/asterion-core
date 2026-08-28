@@ -432,6 +432,7 @@ contrato en todo el ecosistema.
 ```bash
 # ciclo de vida
 asterion plugin install github.com/usuario/asterion-plugin-sii   # clona el repo, valida plugin.yaml
+asterion plugin install ./mi-plugin-privado --link               # NO clona/copia nada — registra la carpeta tal cual
 asterion plugin config set sii rut_empresa=76.123.456-7 cert_password=...
 asterion plugin start sii     # puerto libre elegido solo, espera el health check
 asterion plugin list          # todos los instalados, con estado real (reconciliado contra el pid)
@@ -444,7 +445,29 @@ asterion plugin init mi-plugin --language go      # scaffold: ya cumple el contr
 asterion plugin validate ./mi-plugin              # valida plugin.yaml + lo que referencia (openapi.yaml, schemas)
 asterion plugin dev ./mi-plugin                   # arranca el plugin y confirma que su API real coincide con lo declarado
 asterion plugin from-openapi mi-api.yaml          # infiere un plugin.yaml de partida a partir de una API REST propia
+asterion plugin from-ast mi-plugin.ast --out ./mi-plugin   # compila un manifiesto declarado explícito en Asterion Language, y lo valida
 ```
+
+`from-ast` es la alternativa sin heurística a `from-openapi`: en vez de
+inferir `resources`/`actions` adivinando por la forma de una URL (y a
+veces adivinando mal — un endpoint de un segmento como `/enviar` sale
+como "resource" en vez de "action"), el autor declara cada campo del
+contrato explícito con llamadas `Contract.define(...)`,
+`Contract.config(...)`, `Contract.resource(...)`, etc. en un `.ast` — el
+mismo lenguaje de `asterion language check`, pero un DSL separado (no
+pasa por su analyzer de infraestructura). Ver
+`asterion-language/spec/grammar.md` § "DSL de manifiesto de plugin" por la
+gramática completa, y `asterion-language/examples/plugin-manifest.ast`
+por un ejemplo real y completo.
+
+**Plugins privados sin repo, con `--link`**: `asterion plugin install <carpeta>
+--link` registra esa carpeta tal cual está — nunca la clona ni la copia a
+ningún lado, `Dir` en el registro apunta directo ahí. Pensado para
+desarrollar (o simplemente probar) un plugin sin publicarlo, ni siquiera
+en un repo git privado propio. Por seguridad, `asterion plugin remove` de
+un plugin `--link` **nunca borra la carpeta** — solo lo desregistra (el
+campo `linked` en el registro es justamente lo que se lo impide); es la
+carpeta real del usuario, no una copia de la que Asterion sea dueña.
 
 Un repo de plugin es cualquier cosa con un `plugin.yaml` en la raíz —
 ningún script de instalación arbitrario corre nunca, solo se lee este
@@ -494,6 +517,18 @@ directamente a partir de `config_schema` — un plugin nuevo no requiere ni
 una línea de UI en Asterion Core, y `backend-core` expone un reverse proxy
 (`/api/plugins/<nombre>/proxy/*`) hacia la API del plugin para que el
 navegador nunca tenga que saber en qué puerto quedó corriendo.
+
+**El dashboard también deja *usar* el plugin, no solo instalarlo/arrancarlo.**
+Si el `plugin.yaml` declara `resources`/`actions` (Asterion Plugin Contract),
+cada plugin instalado y corriendo muestra en el dashboard un botón "Listar"/
+"Crear" por cada resource con esa operación declarada en `crud`, y un botón
+por cada action — todo genérico, leído directo del manifiesto: el dashboard
+nunca tiene código específico de ningún plugin puntual (un SMTP, un ERP, lo
+que sea). Un plugin de terceros que declare `resources: [{name: "emails",
+crud: [create, list]}]` aparece automáticamente con esos botones, sin tocar
+una línea de `frontend-core`. Acciones que no son `GET` piden confirmación
+antes de ejecutarse (pueden ser un efecto real — mandar un mail, emitir
+algo), igual criterio que `asterion plugin dev`.
 
 Puntos clave de diseño:
 
@@ -895,6 +930,35 @@ API real de cada proveedor con credenciales reales, exactamente la misma
 limitación que ya tienen los Provider Adapters de aprovisionamiento (ver
 "Estado actual" más abajo) — se documenta como dependencia explícita, no
 se simula.
+
+## Asterion Language
+
+La capa declarativa nativa del ecosistema — describir infraestructura como
+`Provider.aws.instance(image="ubuntu-24.04", cpu=4, memory=8GB)` en vez de
+una secuencia de comandos. Vive en el repo hermano
+[`asterion-language`](https://github.com/Tarafagat/asterion-language)
+(mismo criterio de `replace` en `go.mod` que `asterion-lab` y
+`asterion-plugin-contract`).
+
+```bash
+asterion language check main.ast   # lexer + parser + semantic — nunca toca infraestructura
+```
+
+**Solo `check` existe hoy.** `plan`/`apply` no están implementados a
+propósito: no hay ningún DAG reutilizable en Go para planificar sobre él
+(el único vive en `asterion-cloud`, en Python, detrás de HTTP), y los 4
+Provider Adapters de este repo son stubs (`ErrNotImplemented`) — un
+`apply` real contra una nube está bloqueado por este mismo repo, no por el
+diseño del lenguaje. `check` sí valida capabilities de verdad: si el
+servicio de adapters (`cmd/asterion-core`, el binario aparte) está
+corriendo, consulta sus capabilities reales por HTTP (mismo canal que
+`asterion providers`/`asterion capabilities`); si no, cae a un snapshot
+estático de referencia y lo dice explícitamente en la salida — nunca en
+silencio.
+
+Ver el README de `asterion-language` para la especificación completa
+(gramática, códigos de diagnóstico `ASTRnnn`) y por qué la arquitectura
+quedó así.
 
 ## Estado actual (honesto)
 

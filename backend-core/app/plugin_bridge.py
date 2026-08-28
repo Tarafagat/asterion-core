@@ -51,12 +51,18 @@ def status(name: str) -> dict:
     return _run(["status", name])
 
 
-def install(repo_url: str, name: str | None = None) -> dict:
+def install(repo_url: str, name: str | None = None, link: bool = False) -> dict:
     """git clone puede tardar más que el resto de las llamadas — timeout
-    más generoso que el default."""
+    más generoso que el default. link=True salta git por completo (ver
+    'asterion plugin install --link' / plugins.InstallLinked): repo_url es
+    en ese caso una carpeta ya existente en este disco, así que no hay
+    clonado que esperar, pero se deja el mismo timeout generoso por las
+    dudas de que el manifest referencie archivos grandes a validar."""
     args = ["install", repo_url, "--json"]
     if name:
         args += ["--name", name]
+    if link:
+        args += ["--link"]
     return _run(args, timeout=60)
 
 

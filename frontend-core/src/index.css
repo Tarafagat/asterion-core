@@ -113,6 +113,11 @@ main {
   font-size: 0.9rem;
 }
 
+.success-text {
+  color: #5fd97a;
+  font-size: 0.85rem;
+}
+
 .dashboard {
   width: 100%;
   max-width: 60rem;
@@ -120,6 +125,81 @@ main {
   padding: 1.5rem;
   display: grid;
   gap: 1.25rem;
+}
+
+.subnav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.subnav-tabs {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.subnav-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.6rem;
+  cursor: pointer;
+}
+
+.subnav-tab:hover {
+  color: #f5f6fa;
+}
+
+.subnav-tab.active {
+  background: rgba(212, 160, 23, 0.12);
+  color: var(--gold-light);
+}
+
+.tab-count {
+  font-size: 0.7rem;
+  font-family: monospace;
+  color: inherit;
+  opacity: 0.75;
+}
+
+.subnav-actions {
+  display: flex;
+  gap: 0.6rem;
+}
+
+.pill-btn {
+  background: var(--navy-light);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f5f6fa;
+  border-radius: 999px;
+  padding: 0.45rem 1.1rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.pill-btn:hover {
+  border-color: var(--gold);
+}
+
+.pill-btn.outline {
+  background: none;
+  border-color: rgba(212, 160, 23, 0.4);
+  color: var(--gold);
+}
+
+.pill-btn.outline:hover {
+  border-color: var(--gold);
+  background: rgba(212, 160, 23, 0.08);
 }
 
 .grid {
@@ -286,4 +366,179 @@ button.link {
   padding: 0.45rem 0.7rem;
   font-family: inherit;
   font-size: 0.85rem;
+}
+
+.install-tabs {
+  display: flex;
+  gap: 0.4rem;
+  margin-top: 0.85rem;
+}
+
+.install-tab {
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  padding: 0.3rem 0.85rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.install-tab:hover {
+  border-color: var(--gold);
+  color: #f5f6fa;
+}
+
+.install-tab.active {
+  background: var(--gold);
+  border-color: var(--gold);
+  color: var(--void);
+  font-weight: 600;
+}
+
+.folder-browser {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.folder-browser-path {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.folder-browser-path code {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.6);
+  word-break: break-all;
+}
+
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  background: var(--navy);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.6rem;
+  padding: 0.4rem;
+}
+
+.folder-entry {
+  background: none;
+  border: none;
+  color: #f5f6fa;
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-radius: 0.4rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.folder-entry:hover {
+  background: var(--navy-light);
+}
+
+.plugin-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.plugin-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.plugin-detail-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.plugin-detail-frame {
+  width: 100%;
+  height: 80vh;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.85rem;
+  background: var(--navy);
+}
+
+.plugin-item-compact {
+  padding: 0.85rem 1rem;
+}
+
+.api-address {
+  font-family: monospace;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.45);
+  background: var(--navy);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0.4rem;
+  padding: 0.3rem 0.55rem;
+}
+
+.plugin-desc-clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.detail-table tr {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.detail-table tr:first-child {
+  border-top: none;
+}
+
+.detail-table th,
+.detail-table td {
+  text-align: left;
+  padding: 0.5rem 0.4rem;
+  vertical-align: top;
+}
+
+.detail-table th {
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 500;
+  width: 11rem;
+  white-space: nowrap;
+}
+
+.endpoints-table thead th {
+  color: var(--gold);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  width: auto;
+  white-space: nowrap;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.endpoint-method {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: var(--gold-light);
+  white-space: nowrap;
+}
+
+.endpoint-path {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.75);
+  word-break: break-all;
 }

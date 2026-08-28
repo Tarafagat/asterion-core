@@ -5,6 +5,8 @@ reverse proxy hacia la API que expone cada plugin en su propio puerto local
 (proxy_to_plugin), para que el dashboard pueda hablarle a un plugin sin que
 el navegador necesite saber en qué puerto quedó corriendo."""
 
+from pathlib import Path
+
 import requests
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel
@@ -19,6 +21,22 @@ router = APIRouter(prefix="/api/plugins", tags=["plugins"])
 class PluginInstallRequest(BaseModel):
     repo_url: str
     name: str | None = None
+    # True: repo_url es una carpeta ya existente en este disco (no una URL
+    # de git) — ver 'asterion plugin install --link' / plugins.InstallLinked.
+    link: bool = False
+
+
+class PluginBrowseEntry(BaseModel):
+    name: str
+    path: str
+    has_manifest: bool
+
+
+class PluginBrowseResult(BaseModel):
+    path: str
+    parent: str | None
+    has_manifest: bool
+    entries: list[PluginBrowseEntry]
 
 
 class PluginConfigRequest(BaseModel):
@@ -41,9 +59,54 @@ def list_plugins(_: dict = Depends(get_local_session)) -> list[dict]:
     return _handle(plugin_bridge.list_plugins)
 
 
+def _has_manifest(dir_path: Path) -> bool:
+    try:
+        return (dir_path / "plugin.yaml").is_file()
+    except OSError:
+        return False
+
+
+# Registrado antes de GET /{name} a propósito: Starlette matchea rutas en
+# orden de registro, y "/browse-dirs" calzaría con el patrón {name} si
+# quedara después (llamando por error a read_plugin_status("browse-dirs")).
+@router.get("/browse-dirs", response_model=PluginBrowseResult)
+def browse_dirs(path: str | None = None, _: dict = Depends(get_local_session)) -> PluginBrowseResult:
+    """Navegador de carpetas puro filesystem, de solo lectura — no pasa por
+    el binario asterion (no hay comando CLI equivalente, es solo listar
+    directorios). Existe para que el selector de carpeta del dashboard
+    pueda ofrecer la ruta absoluta real en disco: la File API estándar del
+    navegador nunca expone esa ruta fuera de Electron, así que "elegir
+    carpeta" acá se resuelve navegando por HTTP contra este mismo backend,
+    que sí tiene acceso directo al filesystem local."""
+    target = Path(path).expanduser() if path else Path.home()
+    try:
+        target = target.resolve(strict=True)
+    except (FileNotFoundError, RuntimeError) as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"No existe la carpeta {target}") from exc
+    if not target.is_dir():
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"{target} no es una carpeta")
+
+    try:
+        children = sorted(
+            (p for p in target.iterdir() if not p.name.startswith(".") and p.is_dir()),
+            key=lambda p: p.name.lower(),
+        )
+    except PermissionError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, f"Sin permiso para leer {target}") from exc
+
+    entries = [
+        PluginBrowseEntry(name=child.name, path=str(child), has_manifest=_has_manifest(child))
+        for child in children
+    ]
+    parent = str(target.parent) if target.parent != target else None
+    return PluginBrowseResult(
+        path=str(target), parent=parent, has_manifest=_has_manifest(target), entries=entries
+    )
+
+
 @router.post("/install", status_code=status.HTTP_201_CREATED)
 def install_plugin(payload: PluginInstallRequest, _: dict = Depends(get_local_session)) -> dict:
-    return _handle(lambda: plugin_bridge.install(payload.repo_url, payload.name))
+    return _handle(lambda: plugin_bridge.install(payload.repo_url, payload.name, payload.link))
 
 
 @router.get("/{name}")

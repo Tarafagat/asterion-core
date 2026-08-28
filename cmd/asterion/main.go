@@ -45,6 +45,7 @@ func main() {
 		containerCmd(),
 		imagesCmd(),
 		pluginsCmd(),
+		languageCmd(),
 	)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)

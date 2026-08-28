@@ -30,7 +30,7 @@ func localCmd() *cobra.Command {
 		Use:   "local",
 		Short: "Preguntas sobre esta máquina: qué es y cuánto está usando (datos crudos, sin costo)",
 	}
-	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd())
+	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localRestartCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd())
 	return root
 }
 
@@ -441,6 +441,114 @@ func localStopCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el resultado como JSON en vez de texto")
 	return cmd
+}
+
+// localRestartCmd equivale a 'local stop' + 'local serve --background' en
+// un solo paso, reusando el mismo puerto si ya estaba corriendo (así no
+// cambian bookmarks ni la URL abierta en el navegador). Si no estaba
+// corriendo, simplemente lo arranca — mismo criterio que 'systemctl
+// restart' cuando el servicio estaba parado.
+//
+// Nota: esto NO hace falta después de un 'pnpm build' de frontend-core —
+// backend-core sirve esos archivos directo desde disco en cada request
+// (ver StaticFiles en backend-core/app/main.py), así que un build nuevo ya
+// se ve con solo refrescar el navegador. Este comando es para cuando
+// además cambió backend-core (Python) o el propio binario de Asterion, o
+// simplemente como atajo de los dos pasos.
+func localRestartCmd() *cobra.Command {
+	var dir string
+	var port int
+	var pythonBin string
+
+	cmd := &cobra.Command{
+		Use:   "restart",
+		Short: "Para y vuelve a levantar el dashboard local en segundo plano, en un solo paso",
+		Long: "Equivale a 'asterion local stop' + 'asterion local serve --background'. Si el dashboard\n" +
+			"ya estaba corriendo, reusa el mismo puerto (si sigue libre al reintentarlo); si no, arranca\n" +
+			"en el puerto de siempre. Si no estaba corriendo, lo arranca directamente.\n\n" +
+			"Un 'pnpm build' nuevo de frontend-core NO necesita esto: backend-core sirve el build\n" +
+			"directo desde disco en cada request, así que alcanza con refrescar el navegador. Este\n" +
+			"comando es para cuando cambió backend-core (Python) o el binario de Asterion.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			backendCoreDir, err := resolveBackendCoreDir(dir)
+			if err != nil {
+				return err
+			}
+
+			preferredPort := port
+			if state, alive, _ := localserve.Status(); alive {
+				if preferredPort == 0 {
+					preferredPort = state.Port
+				}
+				fmt.Printf("Deteniendo dashboard local (pid %d, puerto %d)...\n", state.PID, state.Port)
+				if _, err := localserve.Stop(); err != nil {
+					return err
+				}
+				waitForPortFree(state.Port, 5*time.Second)
+			} else {
+				fmt.Println("El dashboard local no estaba corriendo — arrancándolo.")
+			}
+
+			token, isNew, err := localauth.EnsureToken()
+			if err != nil {
+				return fmt.Errorf("no se pudo preparar el token de acceso local: %w", err)
+			}
+			if isNew {
+				authPath, _ := localauth.Path()
+				fmt.Println(localauth.FormatFirstRun(token, authPath))
+			}
+
+			python, err := ensureBackendCoreVenv(backendCoreDir, pythonBin)
+			if err != nil {
+				return err
+			}
+
+			// Se resuelve el puerto ACÁ (probing real) en vez de pasarle
+			// preferredPort tal cual a runBackendCoreBackground: esa función
+			// trata un puerto no-cero como una orden explícita y lo pasa a
+			// Python sin más chequeo — si el viejo proceso todavía no soltó
+			// el socket (SIGTERM es async), Python fallaría al bindear. Acá
+			// se prueba de verdad y, si hace falta, se cae al siguiente
+			// puerto libre, igual que el arranque normal sin --port.
+			resolvedPort := preferredPort
+			if port == 0 {
+				fallback := preferredPort
+				if fallback == 0 {
+					fallback = runtime.DefaultConfig().ServicePort
+					if cfg, cfgErr := runtime.LoadConfig(); cfgErr == nil {
+						fallback = cfg.ServicePort
+					}
+				}
+				p, err := preferredFreePort(fallback, 20)
+				if err != nil {
+					return fmt.Errorf("no pude reservar un puerto libre: %w", err)
+				}
+				resolvedPort = p
+			}
+
+			return runBackendCoreBackground(backendCoreDir, python, resolvedPort)
+		},
+	}
+	cmd.Flags().StringVar(&dir, "dir", "", "Ruta a asterion-core/backend-core (default: la busca en ubicaciones comunes)")
+	cmd.Flags().IntVar(&port, "port", 0, "Puerto fijo a la fuerza (default: reusar el de antes si estaba corriendo, si no el que el sistema elija)")
+	cmd.Flags().StringVar(&pythonBin, "python", "", "Intérprete de Python 3 a usar si hay que crear el venv (default: 'python3' del PATH)")
+	return cmd
+}
+
+// waitForPortFree espera hasta 'timeout' a que el puerto quede libre
+// después de un SIGTERM — uvicorn tarda un poquito en soltar el socket. Si
+// se agota el timeout se sigue igual: la resolución de puerto de más abajo
+// cae al siguiente puerto libre en vez de fallar.
+func waitForPortFree(port int, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			l.Close()
+			return
+		}
+		time.Sleep(150 * time.Millisecond)
+	}
 }
 
 // ensureBackendCoreVenv devuelve la ruta al Python del venv de backend-core,

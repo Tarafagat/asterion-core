@@ -26,9 +26,31 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
   archivos referenciados), `asterion plugin dev` (sandbox local: arranca el
   plugin y confirma que su API real coincide con lo declarado, sin llamar
   nunca operaciones destructivas), `asterion plugin from-openapi`
-  (transforma una API REST propia en un `plugin.yaml` de partida). Incluye
-  un plugin de referencia funcionando (`dummy-fs-provider`) con tests
-  reales.
+  (transforma una API REST propia en un `plugin.yaml` de partida),
+  `asterion plugin from-ast` (compila un manifiesto declarado explícito en
+  Asterion Language — `Contract.define/config/resource/action/...` — a un
+  `plugin.yaml`, y lo valida; alternativa sin heurística a `from-openapi`,
+  implementada en el paquete `pluginmanifest` del repo hermano
+  `asterion-language`). Incluye un plugin de referencia funcionando
+  (`dummy-fs-provider`) con tests reales.
+- `asterion plugin install --link <carpeta>`: registra un plugin privado
+  desde una carpeta local tal cual, sin `git clone` ni copiarla a ningún
+  lado — para desarrollo/pruebas sin necesitar ni siquiera un repo git.
+  Nuevo campo `linked` en el registro de un plugin instalado; `asterion
+  plugin remove` lo respeta y nunca borra la carpeta de un plugin `--link`
+  (solo la copia en `~/.config/asterion/plugins/repos/` de un plugin
+  instalado normal).
+- **Dashboard: selector de carpeta para instalar un plugin `--link`.** La
+  pestaña "Desde carpeta local" del panel de Plugins navega el disco de
+  esta máquina vía un endpoint nuevo de solo lectura,
+  `GET /api/plugins/browse-dirs` (no pasa por el binario `asterion`, es
+  filesystem puro en `backend-core`) — necesario porque la File API
+  estándar del navegador nunca expone la ruta absoluta real de una
+  carpeta fuera de Electron, así que un `<input type="file">` no alcanza
+  para esto. Marca con un ✓ las carpetas que ya tienen un `plugin.yaml`
+  válido; "Vincular esta carpeta" llama a `POST /api/plugins/install` con
+  `link: true`, mismo camino que `asterion plugin install --link` desde
+  la terminal.
 - **Soporte para macOS**: `asterion local info`/`stats` (CPU/RAM/disco/red
   reales vía `sysctl`, `vm_stat`, `netstat`), `asterion agent install`
   sobre `launchd` (en vez de systemd), detección de firewall
@@ -65,6 +87,22 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
   Nuevo `asterion local stop`, y un botón "Apagar dashboard" en el propio
   frontend (`POST /api/local/shutdown`) — los tres caminos de apagado
   (Ctrl-C, `local stop`, el botón) mandan la misma señal al mismo proceso.
+- **Rate limit de login** en `POST /api/auth/token`: por IP (5 intentos
+  cada 5 minutos, configurable), con bloqueo creciente recursivo ante
+  insistencia repetida, límite global agregado como defensa contra alguien
+  rotando de IP, y lista blanca opcional de IPs/CIDR (`LOGIN_ALLOWED_IPS`).
+  Ver `.env.example` y `backend-core/app/auth.py`.
+- **Dashboard: usar un plugin, no solo administrarlo.** Si `plugin.yaml`
+  declara `resources`/`actions` (Asterion Plugin Contract), el dashboard
+  muestra botones genéricos para listar/crear resources y ejecutar actions
+  — leído directo del manifiesto, sin código específico de ningún plugin.
+- **`asterion language check`**: primera integración del repo hermano
+  `asterion-language` — lexer/parser/semantic analyzer reales para la
+  capa declarativa del ecosistema. Valida capabilities contra el servicio
+  real de adapters cuando está corriendo (vía `internal/coreclient`), con
+  un fallback estático explícito cuando no. `plan`/`apply` no existen
+  todavía — bloqueados por los Provider Adapters (son stubs) y por no
+  haber un DAG reutilizable en Go, no por el diseño del lenguaje.
 
 ### Fixed
 - **Bug real de login**: `backend-core` (Python) asumía `~/.config/asterion`
