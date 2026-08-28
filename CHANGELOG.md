@@ -70,8 +70,37 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
   plan`/`local doctor` (solo lectura, nunca aplica cambios reales — esa
   capacidad espera a que exista un lugar seguro para probarla primero,
   que es justamente lo que resolvió Asterion Lab).
+- **`asterion local restart`**: para y vuelve a levantar el dashboard local
+  en segundo plano en un solo comando, reusando el puerto si estaba
+  corriendo — antes había que acordarse de encadenar `local stop` +
+  `local serve --background` a mano.
+- **Dashboard: navegación por pestañas.** El dashboard local pasa de una
+  sola pantalla larga a un `<nav>` con pestañas ("Resumen"/"Plugins", esta
+  última con un contador `corriendo/total`) y los controles de sesión
+  (cerrar sesión, apagar) movidos a esa misma barra — mismo look and feel
+  que la barra superior de Asterion Cloud, para ir acoplando ambos
+  dashboards visualmente.
+- **Dashboard: panel dedicado por plugin.** Cada plugin instalado tiene un
+  botón "Abrir panel" que entra a una vista propia con su dashboard
+  embebido de verdad (vía el reverse proxy existente, ahora sirviendo el
+  frontend completo del plugin, no solo su API), más tarjetas de
+  Características (metadata del manifiesto + la dirección real
+  `127.0.0.1:<puerto>` donde corre su API), Configuración, Endpoints
+  (catálogo de solo lectura: método/ruta/estructura de cada
+  resource/action) y conexión a Asterion Cloud — todo lo que antes vivía
+  amontonado en la tarjeta de la lista, ahora movido ahí para que la lista
+  misma quede chica y escaneable. Si el plugin no tiene ningún frontend
+  propio, el panel igual muestra algo real: el Asterion Plugin Contract le
+  genera uno a partir de su `plugin.yaml` (ver `pdk.MountFrontend` en
+  `asterion-plugin-contract`).
 
 ### Changed
+- Sacado (a favor de la tabla de Endpoints de solo lectura, más arriba): el
+  tester interactivo que corría `list`/`create`/acciones en vivo contra el
+  proxy de un plugin desde el propio dashboard. Con el panel embebido real
+  ya cubriendo "usar el plugin", ese tester genérico quedaba redundante —
+  la forma real de usar un plugin es su propio dashboard, no un botón
+  genérico que dispara un `POST` a ciegas.
 - Licencia: Apache License 2.0 (ver [LICENSE](LICENSE)) — explícita a
   propósito, para maximizar la adopción del ecosistema de plugins. Ver
   la sección "Licencia" del README para el porqué de la separación
@@ -123,3 +152,15 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
   primer plano — y `doctor`/`status` además usan el puerto real de una
   instancia en segundo plano si hay una corriendo, en vez de solo el
   declarado.
+- **`asterion plugin start` arrancaba siempre con el manifest de cuando se
+  instaló**, no el que hay ahora en disco — `state.json` guarda una foto
+  de `plugin.yaml` tomada en `install`/`install --link`, y nada la
+  refrescaba después. Un plugin que evolucionara su `plugin.yaml` (nuevos
+  `resources`/`actions`, típicamente vía `from-ast --force`) mostraba en
+  el dashboard y en `plugin list` datos permanentemente desactualizados
+  hasta reinstalarlo. `Start()` ahora relee el manifest desde
+  `installed.Dir` antes de arrancar el proceso (si la lectura falla, sigue
+  con el último manifest válido conocido en vez de bloquear el arranque)
+  — encontrado y corregido mientras se probaba en vivo la tabla de
+  Endpoints del panel de plugin, contra `asterion-mail-plugin-basic`
+  después de agregarle el resource `recipient-groups`.

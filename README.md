@@ -215,6 +215,22 @@ dashboard" junto a "Cerrar sesión", una vez logueado. Los tres caminos
 terminan en lo mismo: `SIGTERM` al proceso, que uvicorn maneja de forma
 prolija.
 
+Si reconstruiste `frontend-core` (`pnpm build`) o `backend-core` cambió,
+no hace falta el paso manual de parar y volver a levantar — `asterion
+local restart` hace las dos cosas en un solo comando, reusando el mismo
+puerto si estaba corriendo:
+
+```bash
+asterion local restart
+# Deteniendo dashboard local (pid 52021, puerto 8091)...
+# ✓ Dashboard local corriendo en segundo plano — http://127.0.0.1:8091 (pid 52099)
+```
+
+(El frontend en sí no necesita este restart: `backend-core` lo sirve en
+vivo desde `frontend-core/dist` en cada request — un `pnpm build` nuevo
+ya se ve al refrescar el navegador. `local restart` hace falta cuando
+cambió código Python de `backend-core`, que sí vive cargado en memoria.)
+
 ## Estructura
 
 ```
@@ -467,7 +483,10 @@ desarrollar (o simplemente probar) un plugin sin publicarlo, ni siquiera
 en un repo git privado propio. Por seguridad, `asterion plugin remove` de
 un plugin `--link` **nunca borra la carpeta** — solo lo desregistra (el
 campo `linked` en el registro es justamente lo que se lo impide); es la
-carpeta real del usuario, no una copia de la que Asterion sea dueña.
+carpeta real del usuario, no una copia de la que Asterion sea dueña. El
+dashboard tiene el mismo camino sin usar la terminal: tab "Plugins" →
+"Desde carpeta local" → navegador de carpetas (marca con ✓ las que ya
+tienen un `plugin.yaml` válido) → "Vincular esta carpeta".
 
 Un repo de plugin es cualquier cosa con un `plugin.yaml` en la raíz —
 ningún script de instalación arbitrario corre nunca, solo se lee este
@@ -519,16 +538,34 @@ una línea de UI en Asterion Core, y `backend-core` expone un reverse proxy
 navegador nunca tenga que saber en qué puerto quedó corriendo.
 
 **El dashboard también deja *usar* el plugin, no solo instalarlo/arrancarlo.**
-Si el `plugin.yaml` declara `resources`/`actions` (Asterion Plugin Contract),
-cada plugin instalado y corriendo muestra en el dashboard un botón "Listar"/
-"Crear" por cada resource con esa operación declarada en `crud`, y un botón
-por cada action — todo genérico, leído directo del manifiesto: el dashboard
-nunca tiene código específico de ningún plugin puntual (un SMTP, un ERP, lo
-que sea). Un plugin de terceros que declare `resources: [{name: "emails",
-crud: [create, list]}]` aparece automáticamente con esos botones, sin tocar
-una línea de `frontend-core`. Acciones que no son `GET` piden confirmación
-antes de ejecutarse (pueden ser un efecto real — mandar un mail, emitir
-algo), igual criterio que `asterion plugin dev`.
+La lista de plugins (tab "Plugins") muestra tarjetas chicas — nombre, versión,
+estado, la dirección real `127.0.0.1:<puerto>` donde está corriendo su API, y
+tres botones: Abrir panel / Arrancar-Detener / Desinstalar. Apretar "Abrir
+panel" entra a una vista dedicada de ese plugin con:
+
+- **El dashboard propio del plugin, embebido de verdad.** Un `<iframe>`
+  apuntando a `/api/plugins/<nombre>/proxy/` — el mismo reverse proxy que ya
+  existía, sirviendo esta vez el frontend completo del plugin (no solo
+  llamadas a su API). Si el plugin no trae ningún frontend propio (una API
+  puramente REST), el Asterion Plugin Contract genera uno solo con lo que el
+  `plugin.yaml` declara — ver `pdk.MountFrontend` en `asterion-plugin-contract`
+  — así ningún plugin queda "sin cara" solo por no tener un React hecho a
+  mano.
+- **Características**: tabla con descripción, autor, licencia, permisos
+  declarados, y la dirección de la API, leído directo del manifiesto.
+- **Configuración**: el formulario que antes vivía en la tarjeta de la
+  lista — un campo por entrada de `config_schema`, auto-generado.
+- **Endpoints**: tabla de solo lectura (método, ruta, qué es/estructura) de
+  cada `resource`/`action` declarado — catálogo de referencia, no un tester
+  interactivo (ese trabajo lo hace el panel embebido del propio plugin,
+  arriba).
+- **Asterion Cloud**: el form de `connect`, si el plugin todavía no está
+  vinculado a un proyecto.
+
+Todo esto sale del manifiesto sin que `frontend-core` tenga código
+específico de ningún plugin puntual — un plugin de terceros que declare
+`resources`/`actions` nuevos aparece con su fila en la tabla de Endpoints
+sin tocar una línea de este repo.
 
 Puntos clave de diseño:
 
