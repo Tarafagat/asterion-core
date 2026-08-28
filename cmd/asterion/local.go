@@ -30,7 +30,7 @@ func localCmd() *cobra.Command {
 		Use:   "local",
 		Short: "Preguntas sobre esta máquina: qué es y cuánto está usando (datos crudos, sin costo)",
 	}
-	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localRestartCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd())
+	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localRestartCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd(), localTunnelCmd())
 	return root
 }
 

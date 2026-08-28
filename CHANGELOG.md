@@ -9,6 +9,19 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
+- **`asterion local tunnel start/stop/status/config`**: expone un puerto
+  local (por default, el de `local serve` si está corriendo) con una URL
+  pública HTTPS real vía Cloudflare Tunnel — sin abrir puertos en el
+  firewall ni depender de la IP pública. Sin nada configurado usa un
+  quick tunnel gratis de Cloudflare (`*.trycloudflare.com`, sin cuenta ni
+  dominio); `local tunnel config set --token ...` guarda (cifrado) el
+  token de un túnel con nombre ya creado en el dashboard de Cloudflare,
+  para exponerlo con dominio propio de ahí en adelante. Probado en vivo:
+  URL real generada, `curl` externo respondido con `200` por Cloudflare.
+  El cifrado (`internal/secretbox`) se extrajo de `internal/plugins`
+  (antes privado ahí) para reusarlo acá sin duplicar la implementación —
+  cada subsistema sigue con su propia clave, sin migración para
+  instalaciones existentes de plugins.
 - **`asterion core serve`**: el servicio de Provider Adapters
   (AWS/Azure/GCP/OCI) ahora también corre como subcomando del CLI, mismo
   puerto default (`:8090`) y misma lógica que el binario standalone

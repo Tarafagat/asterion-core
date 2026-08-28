@@ -309,6 +309,44 @@ corriendo, el backend se degrada con gracia — el aprovisionamiento sigue
 funcionando contra el estado propio de Asterion, solo que sin intentar la
 llamada real al proveedor (ver `app/services/core_client.py`).
 
+## URL pública para un servicio local: `asterion local tunnel`
+
+Envuelve Cloudflare Tunnel (requiere `cloudflared` en el PATH — el comando
+avisa cómo instalarlo si no lo encuentra) para exponer cualquier puerto
+local con HTTPS real, sin depender de la IP pública ni de abrir un puerto
+en el firewall/security group:
+
+```bash
+asterion local tunnel start                # expone el puerto de 'local serve' si está corriendo
+asterion local tunnel start --port 8080    # o un puerto explícito, cualquier servicio
+asterion local tunnel status
+asterion local tunnel stop
+```
+
+Sin nada configurado usa un **quick tunnel** — Cloudflare genera una URL
+`https://<random>.trycloudflare.com` al vuelo, sin cuenta ni dominio propio.
+Probado en vivo: `asterion local tunnel start` contra el dashboard local
+(`local serve`, puerto 8091) devolvió una URL real, respondida con `200`
+por `curl` desde afuera — pública de verdad, no un simulacro.
+
+Si ya tenés un dominio propio con un túnel con nombre creado a mano en el
+dashboard de Cloudflare (Networks → Tunnels → tu túnel → "Install a
+connector" te da un token), guardalo una vez y `start` lo usa solo de ahí
+en adelante:
+
+```bash
+asterion local tunnel config set --token <el-token-del-dashboard>
+asterion local tunnel start   # ahora usa ese túnel con nombre, no un quick tunnel
+asterion local tunnel config clear   # volver a modo quick tunnel
+```
+
+El token se cifra en disco (AES-256-GCM, misma implementación que ya usaba
+`internal/plugins` para la config de un plugin — extraída a
+`internal/secretbox` para poder reusarla acá sin duplicar el cifrado, con
+su propia clave — nunca comparte ni pisa el `master.key` de los plugins).
+`local tunnel config show` nunca vuelve a mostrar el valor guardado, solo
+si hay uno.
+
 ## Modo local (sin sesión)
 
 ```bash
