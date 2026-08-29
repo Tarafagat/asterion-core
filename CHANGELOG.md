@@ -9,6 +9,19 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
+- **`asterion plugin find`**: versión legible-por-humano de `plugin list`
+  (que siempre imprime JSON, para backend-core) — nombre, versión,
+  descripción, si está corriendo, y a qué proyecto de Asterion Cloud está
+  conectado cada plugin instalado en esta máquina. No distingue origen:
+  un plugin propio instalado con `--link` aparece igual que uno de
+  terceros clonado de un repo público.
+- **`name`/`--project` opcionales en `asterion plugin connect`**: sin
+  `name`, lista los plugins instalados para elegir uno (mismo mecanismo
+  que `plugin find`); sin `--project`, reusa `resolveProjectID` de
+  `cloud connect` (listar/crear proyecto). Mismo motivo que el de
+  `cloud connect`: antes tirabas `plugin connect --project 1` sin el
+  nombre y solo devolvía `accepts 1 arg(s), received 0`, sin ninguna
+  ayuda para encontrar qué nombre local usar.
 - **`--project` opcional en `asterion cloud connect`/`install-agent`**: si
   se omite, se listan los proyectos de la cuenta ya logueada
   (`GET /projects`) para elegir uno por número; si todavía no hay ninguno,
@@ -178,6 +191,21 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
   haber un DAG reutilizable en Go, no por el diseño del lenguaje.
 
 ### Fixed
+- **Bug real encontrado al probar `plugin connect` encadenado con
+  `resolveProjectID`**: cada prompt interactivo (`cloud connect`,
+  `plugin connect`, etc.) creaba su propio `bufio.NewReader(os.Stdin)`.
+  `bufio.Reader` hace lecturas anticipadas — cuando dos prompts se
+  encadenan en el mismo comando (elegir un plugin y después un proyecto,
+  en `plugin connect` sin argumentos), el primer reader ya le había
+  adelantado bytes al segundo `\n` desde el fd real sin haberlos
+  entregado todavía, así que el segundo prompt leía una línea vacía y
+  fallaba con `respuesta inválida: ""` incluso con input correcto
+  esperando en stdin. Reproducido en vivo con el binario real antes de
+  arreglarlo. Fix: un único `*bufio.Reader` de stdin para todo el
+  proceso (`cmd/asterion/util.go:stdin` + `readLine()`), en vez de uno
+  por función — inmune a cualquier secuencia de prompts, presente o
+  futura. Re-verificado en vivo después del fix: mismo flujo encadenado
+  (elegir plugin #2, después proyecto #1) funcionando de punta a punta.
 - **Bug real de login**: `backend-core` (Python) asumía `~/.config/asterion`
   a mano para encontrar `local-auth.yaml`/`credentials.json`, pero el CLI
   (Go) los escribe con `os.UserConfigDir()` — que en macOS es

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"sort"
@@ -48,11 +47,9 @@ func cloudLoginCmd() *cobra.Command {
 				return err
 			}
 
-			reader := bufio.NewReader(os.Stdin)
 			if email == "" {
 				fmt.Print("Email: ")
-				email, _ = reader.ReadString('\n')
-				email = trimNewline(email)
+				email = trimNewline(readLine())
 			}
 
 			client := apiclient.NewUnauthenticated(cfg.APIBaseURL)
@@ -61,8 +58,7 @@ func cloudLoginCmd() *cobra.Command {
 			}
 			fmt.Println("Te mandamos un código a tu correo si esa dirección tiene una cuenta de Asterion.")
 			fmt.Print("Código: ")
-			code, _ := reader.ReadString('\n')
-			code = trimNewline(code)
+			code := trimNewline(readLine())
 
 			session, err := client.VerifyLoginCode(email, code)
 			if err != nil {
@@ -117,22 +113,20 @@ func resolveProjectID(client *apiclient.Client, flagProjectID int) (int, error) 
 		return 0, fmt.Errorf("no pude listar tus proyectos: %w", err)
 	}
 
-	reader := bufio.NewReader(os.Stdin)
-
 	if len(projects) == 0 {
 		fmt.Println("Todavía no tenés ningún proyecto en Asterion Cloud.")
 		fmt.Print("¿Creamos uno ahora? [S/n]: ")
-		answer := strings.ToLower(trimNewline(readLine(reader)))
+		answer := strings.ToLower(trimNewline(readLine()))
 		if answer != "" && answer != "s" && answer != "si" && answer != "sí" {
 			return 0, fmt.Errorf("no hay proyecto para usar — creá uno con la web o pasá --project")
 		}
 		fmt.Print("Nombre del proyecto: ")
-		name := trimNewline(readLine(reader))
+		name := trimNewline(readLine())
 		if name == "" {
 			return 0, fmt.Errorf("el nombre del proyecto no puede estar vacío")
 		}
 		fmt.Print("Descripción (opcional): ")
-		description := trimNewline(readLine(reader))
+		description := trimNewline(readLine())
 
 		created, err := client.CreateProject(name, description)
 		if err != nil {
@@ -156,7 +150,7 @@ func resolveProjectID(client *apiclient.Client, flagProjectID int) (int, error) 
 		fmt.Printf("  %d) %s (id %d)\n", i+1, name, int(idFloat))
 	}
 	fmt.Print("Número (o el ID directamente): ")
-	choice := trimNewline(readLine(reader))
+	choice := trimNewline(readLine())
 	n, err := strconv.Atoi(choice)
 	if err != nil {
 		return 0, fmt.Errorf("respuesta inválida: %q", choice)
@@ -174,11 +168,6 @@ func resolveProjectID(client *apiclient.Client, flagProjectID int) (int, error) 
 		}
 	}
 	return 0, fmt.Errorf("no encontré el proyecto %d en la lista de arriba", n)
-}
-
-func readLine(reader *bufio.Reader) string {
-	line, _ := reader.ReadString('\n')
-	return line
 }
 
 // connectLocalInstance es el mecanismo compartido por `cloud connect` y
