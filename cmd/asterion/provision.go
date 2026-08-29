@@ -23,7 +23,7 @@ func provisionCmd() *cobra.Command {
 }
 
 func provisionListCmd() *cobra.Command {
-	var projectID int
+	var projectSlug string
 	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "Lista las solicitudes de aprovisionamiento de un proyecto",
@@ -32,7 +32,7 @@ func provisionListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			reqs, err := client.ListProvisioningRequests(projectID)
+			reqs, err := client.ListProvisioningRequests(projectSlug)
 			if err != nil {
 				return err
 			}
@@ -40,13 +40,13 @@ func provisionListCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto")
+	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud")
 	_ = cmd.MarkFlagRequired("project")
 	return cmd
 }
 
 func provisionDescribeCmd() *cobra.Command {
-	var projectID int
+	var projectSlug string
 	var resourceType, specInline, specFile string
 	cmd := &cobra.Command{
 		Use:   "describe",
@@ -74,7 +74,7 @@ func provisionDescribeCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			req, err := client.CreateProvisioningRequest(projectID, resourceType, spec)
+			req, err := client.CreateProvisioningRequest(projectSlug, resourceType, spec)
 			if err != nil {
 				return err
 			}
@@ -82,7 +82,7 @@ func provisionDescribeCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto")
+	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud")
 	cmd.Flags().StringVar(&resourceType, "type", "", "Tipo de recurso: network | instance | managed_database | storage_bucket")
 	cmd.Flags().StringVar(&specInline, "spec", "", "Descripción del recurso como JSON inline")
 	cmd.Flags().StringVar(&specFile, "spec-file", "", "Descripción del recurso como archivo JSON")

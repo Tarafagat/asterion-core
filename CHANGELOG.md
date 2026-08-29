@@ -8,6 +8,44 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 
 ## [Unreleased]
 
+### Changed
+- **`--project` pasa de ser un número a ser el slug del proyecto** (ej.
+  `mi-proyecto-a3f9c1`), siguiendo el mismo cambio del lado de Asterion
+  Cloud (ver su CHANGELOG: los proyectos dejaron de direccionarse por id
+  numérico secuencial, enumerable, a favor de un slug). Afecta a los
+  comandos que hablan con Cloud: `cloud connect`, `cloud install-agent`,
+  `cloud uninstall-agent`, `plugin connect`, `instances list --project`,
+  `cloud-accounts list/create --project`, `provision list/describe
+  --project`.
+  - `internal/apiclient/client.go`: los 8 métodos que llamaban
+    `/projects/{id}/...` (`ConnectLocalInstance`, `ConnectLocalPlugin`,
+    `ListPlugins`, `ListCloudAccounts`, `CreateCloudAccount`,
+    `ListInstances`, `ListProvisioningRequests`,
+    `CreateProvisioningRequest`) pasan de `projectID int` a
+    `projectSlug string`.
+  - `resolveProjectID` (`cmd/asterion/cloud.go`) pasa a llamarse
+    `resolveProjectSlug` — el picker interactivo ahora muestra el slug
+    de cada proyecto en vez de su id, y "tipear el ID directo" pasa a
+    "tipear el slug directo". El orden del picker (más viejo primero)
+    se preservó usando `created_at` en vez del id numérico ascendente,
+    que ya no forma parte de lo que el usuario ve.
+  - `internal/plugins/store.go`: el campo persistido
+    `ConnectedProjectID int` (`connected_project_id` en
+    `state.json`) pasa a `ConnectedProjectSlug string`
+    (`connected_project_slug`). Efecto secundario aceptado a propósito:
+    un plugin que ya estaba conectado antes de este cambio va a
+    aparecer como no conectado hasta correr `asterion plugin connect`
+    de nuevo — no hay releases con usuarios externos todavía como para
+    justificar escribir una migración de este archivo de estado local.
+  - Verificado con el binario real compilado contra un servidor HTTP
+    mock (mismo criterio que ya se usó para probar `plugin connect`
+    encadenado con `resolveProjectID` — ver más abajo en este mismo
+    archivo): `--project <slug>` explícito, elegir por número en el
+    picker interactivo, y tipear el slug directo en el picker — los
+    tres confirmados a nivel HTTP real (el servidor mock logueó el path
+    exacto recibido en cada caso). `go build`/`go vet`/`go test ./...`
+    limpios.
+
 ### Added
 - **`asterion plugin find`**: versión legible-por-humano de `plugin list`
   (que siempre imprime JSON, para backend-core) — nombre, versión,

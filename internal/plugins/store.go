@@ -29,14 +29,14 @@ type Installed struct {
 	// para que Uninstall sepa que NUNCA debe borrar Dir — ver el comentario
 	// ahí. Un plugin instalado por 'install <repo-url>' normal siempre
 	// tiene Linked=false.
-	Linked             bool      `json:"linked,omitempty"`
-	Manifest           Manifest  `json:"manifest"`
-	Port               int       `json:"port,omitempty"`
-	PID                int       `json:"pid,omitempty"`
-	Status             string    `json:"status"` // stopped | running
-	ConnectedProjectID int       `json:"connected_project_id,omitempty"`
-	InstalledAt        time.Time `json:"installed_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	Linked               bool      `json:"linked,omitempty"`
+	Manifest             Manifest  `json:"manifest"`
+	Port                 int       `json:"port,omitempty"`
+	PID                  int       `json:"pid,omitempty"`
+	Status               string    `json:"status"` // stopped | running
+	ConnectedProjectSlug string    `json:"connected_project_slug,omitempty"`
+	InstalledAt          time.Time `json:"installed_at"`
+	UpdatedAt            time.Time `json:"updated_at"`
 }
 
 // NewExternalRef genera el identificador local de un plugin nuevo:

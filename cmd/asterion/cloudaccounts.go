@@ -10,7 +10,7 @@ import (
 func cloudAccountsCmd() *cobra.Command {
 	root := &cobra.Command{Use: "cloud-accounts", Short: "Cuentas cloud conectadas a un proyecto (AWS/Azure/GCP/OCI)"}
 
-	var projectID int
+	var projectSlug string
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "Lista las cuentas cloud de un proyecto",
@@ -19,7 +19,7 @@ func cloudAccountsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			accounts, err := client.ListCloudAccounts(projectID)
+			accounts, err := client.ListCloudAccounts(projectSlug)
 			if err != nil {
 				return err
 			}
@@ -27,7 +27,7 @@ func cloudAccountsCmd() *cobra.Command {
 			return nil
 		},
 	}
-	listCmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto")
+	listCmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud")
 	_ = listCmd.MarkFlagRequired("project")
 
 	var providerID int
@@ -49,7 +49,7 @@ func cloudAccountsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			account, err := client.CreateCloudAccount(projectID, map[string]any{
+			account, err := client.CreateCloudAccount(projectSlug, map[string]any{
 				"provider_id":         providerID,
 				"alias":               alias,
 				"external_account_id": externalAccountID,
@@ -63,7 +63,7 @@ func cloudAccountsCmd() *cobra.Command {
 			return nil
 		},
 	}
-	createCmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto")
+	createCmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud")
 	createCmd.Flags().IntVar(&providerID, "provider", 0, "ID del proveedor (ver 'asterion providers')")
 	createCmd.Flags().StringVar(&alias, "alias", "", "Alias de la cuenta (ej. prod-aws)")
 	createCmd.Flags().StringVar(&externalAccountID, "external-id", "", "ID de cuenta/suscripción/proyecto/tenancy en el proveedor")

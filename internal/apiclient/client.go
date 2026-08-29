@@ -161,27 +161,27 @@ func (c *Client) CreateProject(name, description string) (map[string]any, error)
 // ConnectLocalInstance vincula una instancia creada localmente
 // (asterion instances add) a un proyecto de Asterion Cloud, sin
 // duplicarla: si externalRef ya está conectado, la API devuelve la misma
-// instancia en vez de crear una nueva (POST /projects/{id}/instances/connect-local).
-func (c *Client) ConnectLocalInstance(projectID int, payload map[string]any) (map[string]any, error) {
+// instancia en vez de crear una nueva (POST /projects/{slug}/instances/connect-local).
+func (c *Client) ConnectLocalInstance(projectSlug string, payload map[string]any) (map[string]any, error) {
 	var out map[string]any
-	err := c.do(http.MethodPost, fmt.Sprintf("/projects/%d/instances/connect-local", projectID), payload, &out)
+	err := c.do(http.MethodPost, fmt.Sprintf("/projects/%s/instances/connect-local", projectSlug), payload, &out)
 	return out, err
 }
 
 // ConnectLocalPlugin vincula un plugin instalado localmente
 // (asterion plugin install) a un proyecto de Asterion Cloud, sin
 // duplicarlo: si externalRef ya está conectado, la API devuelve el mismo
-// registro en vez de crear uno nuevo (POST /projects/{id}/plugins/connect-local).
-func (c *Client) ConnectLocalPlugin(projectID int, payload map[string]any) (map[string]any, error) {
+// registro en vez de crear uno nuevo (POST /projects/{slug}/plugins/connect-local).
+func (c *Client) ConnectLocalPlugin(projectSlug string, payload map[string]any) (map[string]any, error) {
 	var out map[string]any
-	err := c.do(http.MethodPost, fmt.Sprintf("/projects/%d/plugins/connect-local", projectID), payload, &out)
+	err := c.do(http.MethodPost, fmt.Sprintf("/projects/%s/plugins/connect-local", projectSlug), payload, &out)
 	return out, err
 }
 
 // ListPlugins lista los plugins conectados a un proyecto.
-func (c *Client) ListPlugins(projectID int) ([]map[string]any, error) {
+func (c *Client) ListPlugins(projectSlug string) ([]map[string]any, error) {
 	var out []map[string]any
-	err := c.do(http.MethodGet, fmt.Sprintf("/projects/%d/plugins", projectID), nil, &out)
+	err := c.do(http.MethodGet, fmt.Sprintf("/projects/%s/plugins", projectSlug), nil, &out)
 	return out, err
 }
 
@@ -211,42 +211,42 @@ func (c *Client) RevokeAgent(instanceID int) error {
 }
 
 // ListCloudAccounts lista las cuentas cloud conectadas a un proyecto.
-func (c *Client) ListCloudAccounts(projectID int) ([]map[string]any, error) {
+func (c *Client) ListCloudAccounts(projectSlug string) ([]map[string]any, error) {
 	var out []map[string]any
-	err := c.do(http.MethodGet, fmt.Sprintf("/projects/%d/cloud-accounts", projectID), nil, &out)
+	err := c.do(http.MethodGet, fmt.Sprintf("/projects/%s/cloud-accounts", projectSlug), nil, &out)
 	return out, err
 }
 
 // CreateCloudAccount conecta una cuenta cloud nueva a un proyecto. payload
 // debe incluir provider_id, alias, region_default y credentials (ver
 // app/schemas/cloud_accounts.py del backend para el contrato exacto).
-func (c *Client) CreateCloudAccount(projectID int, payload map[string]any) (map[string]any, error) {
+func (c *Client) CreateCloudAccount(projectSlug string, payload map[string]any) (map[string]any, error) {
 	var out map[string]any
-	err := c.do(http.MethodPost, fmt.Sprintf("/projects/%d/cloud-accounts", projectID), payload, &out)
+	err := c.do(http.MethodPost, fmt.Sprintf("/projects/%s/cloud-accounts", projectSlug), payload, &out)
 	return out, err
 }
 
 // ListInstances lista las instancias de un proyecto.
-func (c *Client) ListInstances(projectID int) ([]map[string]any, error) {
+func (c *Client) ListInstances(projectSlug string) ([]map[string]any, error) {
 	var out []map[string]any
-	err := c.do(http.MethodGet, fmt.Sprintf("/projects/%d/instances", projectID), nil, &out)
+	err := c.do(http.MethodGet, fmt.Sprintf("/projects/%s/instances", projectSlug), nil, &out)
 	return out, err
 }
 
 // ListProvisioningRequests lista el historial de solicitudes de
 // aprovisionamiento de un proyecto.
-func (c *Client) ListProvisioningRequests(projectID int) ([]map[string]any, error) {
+func (c *Client) ListProvisioningRequests(projectSlug string) ([]map[string]any, error) {
 	var out []map[string]any
-	err := c.do(http.MethodGet, fmt.Sprintf("/projects/%d/provisioning-requests", projectID), nil, &out)
+	err := c.do(http.MethodGet, fmt.Sprintf("/projects/%s/provisioning-requests", projectSlug), nil, &out)
 	return out, err
 }
 
 // CreateProvisioningRequest es el paso "Describir": crea una solicitud en
 // estado draft con resourceType (network|instance|managed_database|
 // storage_bucket) y su spec, sin validar ni aplicar nada todavía.
-func (c *Client) CreateProvisioningRequest(projectID int, resourceType string, spec map[string]any) (map[string]any, error) {
+func (c *Client) CreateProvisioningRequest(projectSlug string, resourceType string, spec map[string]any) (map[string]any, error) {
 	var out map[string]any
-	err := c.do(http.MethodPost, fmt.Sprintf("/projects/%d/provisioning-requests", projectID), map[string]any{
+	err := c.do(http.MethodPost, fmt.Sprintf("/projects/%s/provisioning-requests", projectSlug), map[string]any{
 		"resource_type": resourceType,
 		"spec":          spec,
 	}, &out)

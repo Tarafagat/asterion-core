@@ -214,8 +214,8 @@ func printInstalledPlugins(list []plugins.Installed) {
 		}
 		fmt.Printf("%d) %s v%s — %s\n", i+1, p.Name, p.Manifest.Version, desc)
 		fmt.Printf("   estado: %s", p.Status)
-		if p.ConnectedProjectID != 0 {
-			fmt.Printf(" · conectado al proyecto %d de Asterion Cloud\n", p.ConnectedProjectID)
+		if p.ConnectedProjectSlug != "" {
+			fmt.Printf(" · conectado al proyecto %s de Asterion Cloud\n", p.ConnectedProjectSlug)
 		} else {
 			fmt.Println(" · no conectado a ningún proyecto de Asterion Cloud")
 		}
@@ -225,7 +225,7 @@ func printInstalledPlugins(list []plugins.Installed) {
 // resolveInstalledPlugin devuelve el plugin a usar: si ya se pasó un
 // nombre, se respeta tal cual (plugins.Get valida que exista). Si no, se
 // listan los plugins instalados en esta máquina para elegir uno por
-// número o por nombre — mismo criterio que resolveProjectID en cloud.go
+// número o por nombre — mismo criterio que resolveProjectSlug en cloud.go
 // para no obligar a memorizar el nombre exacto de antemano.
 func resolveInstalledPlugin(name string) (plugins.Installed, error) {
 	if name != "" {
@@ -439,7 +439,7 @@ func pluginConfigShowCmd() *cobra.Command {
 // los plugins instalados y los proyectos disponibles para elegir
 // interactivamente (mismo criterio que 'asterion cloud connect').
 func pluginConnectCmd() *cobra.Command {
-	var projectID int
+	var projectSlug string
 	var asJSON bool
 	cmd := &cobra.Command{
 		Use:   "connect [name]",
@@ -465,12 +465,12 @@ func pluginConnectCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resolvedProjectID, err := resolveProjectID(client, projectID)
+			resolvedProjectSlug, err := resolveProjectSlug(client, projectSlug)
 			if err != nil {
 				return err
 			}
 
-			result, err := client.ConnectLocalPlugin(resolvedProjectID, map[string]any{
+			result, err := client.ConnectLocalPlugin(resolvedProjectSlug, map[string]any{
 				"external_ref": installed.ExternalRef,
 				"name":         installed.Name,
 				"version":      installed.Manifest.Version,
@@ -481,7 +481,7 @@ func pluginConnectCmd() *cobra.Command {
 			}
 
 			already, _ := result["already_connected"].(bool)
-			installed.ConnectedProjectID = resolvedProjectID
+			installed.ConnectedProjectSlug = resolvedProjectSlug
 			if err := plugins.Save(installed); err != nil {
 				return err
 			}
@@ -495,11 +495,11 @@ func pluginConnectCmd() *cobra.Command {
 			} else {
 				fmt.Println("✓ Plugin conectado a Asterion Cloud")
 			}
-			fmt.Printf("\nPlugin:\n  %s (id local %s)\n\nCloud:\n  proyecto %d\n", installed.Name, installed.ExternalRef, resolvedProjectID)
+			fmt.Printf("\nPlugin:\n  %s (id local %s)\n\nCloud:\n  proyecto %s\n", installed.Name, installed.ExternalRef, resolvedProjectSlug)
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto de Asterion Cloud (opcional — si se omite, se elige interactivamente)")
+	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud (opcional — si se omite, se elige interactivamente)")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el resultado como JSON en vez de texto")
 	return cmd
 }

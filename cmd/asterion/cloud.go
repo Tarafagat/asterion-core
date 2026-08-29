@@ -98,19 +98,21 @@ func cloudLogoutCmd() *cobra.Command {
 	}
 }
 
-// resolveProjectID devuelve el proyecto a usar: si el usuario ya pasó
-// --project, se respeta tal cual. Si no, se listan sus proyectos y se le
-// pide elegir uno por número; si todavía no tiene ninguno, se lo guía a
-// crear uno ahí mismo (POST /projects) en vez de cortar el flujo con
-// "falta --project" y mandarlo a buscar el ID a mano en el dashboard.
-func resolveProjectID(client *apiclient.Client, flagProjectID int) (int, error) {
-	if flagProjectID != 0 {
-		return flagProjectID, nil
+// resolveProjectSlug devuelve el proyecto a usar (identificado por su
+// slug, no por un id numérico — ver el README para el porqué): si el
+// usuario ya pasó --project, se respeta tal cual. Si no, se listan sus
+// proyectos y se le pide elegir uno por número; si todavía no tiene
+// ninguno, se lo guía a crear uno ahí mismo (POST /projects) en vez de
+// cortar el flujo con "falta --project" y mandarlo a buscar el slug a
+// mano en el dashboard.
+func resolveProjectSlug(client *apiclient.Client, flagProjectSlug string) (string, error) {
+	if flagProjectSlug != "" {
+		return flagProjectSlug, nil
 	}
 
 	projects, err := client.ListProjects()
 	if err != nil {
-		return 0, fmt.Errorf("no pude listar tus proyectos: %w", err)
+		return "", fmt.Errorf("no pude listar tus proyectos: %w", err)
 	}
 
 	if len(projects) == 0 {
@@ -118,56 +120,54 @@ func resolveProjectID(client *apiclient.Client, flagProjectID int) (int, error) 
 		fmt.Print("¿Creamos uno ahora? [S/n]: ")
 		answer := strings.ToLower(trimNewline(readLine()))
 		if answer != "" && answer != "s" && answer != "si" && answer != "sí" {
-			return 0, fmt.Errorf("no hay proyecto para usar — creá uno con la web o pasá --project")
+			return "", fmt.Errorf("no hay proyecto para usar — creá uno con la web o pasá --project")
 		}
 		fmt.Print("Nombre del proyecto: ")
 		name := trimNewline(readLine())
 		if name == "" {
-			return 0, fmt.Errorf("el nombre del proyecto no puede estar vacío")
+			return "", fmt.Errorf("el nombre del proyecto no puede estar vacío")
 		}
 		fmt.Print("Descripción (opcional): ")
 		description := trimNewline(readLine())
 
 		created, err := client.CreateProject(name, description)
 		if err != nil {
-			return 0, fmt.Errorf("no pude crear el proyecto: %w", err)
+			return "", fmt.Errorf("no pude crear el proyecto: %w", err)
 		}
-		idFloat, _ := created["id"].(float64)
-		fmt.Printf("✓ Proyecto %q creado (id %d)\n", name, int(idFloat))
-		return int(idFloat), nil
+		slug, _ := created["slug"].(string)
+		fmt.Printf("✓ Proyecto %q creado (%s)\n", name, slug)
+		return slug, nil
 	}
 
+	// Mismo criterio que antes (más viejo primero) — created_at ocupa el
+	// lugar que tenía el id numérico ascendente como proxy de orden de
+	// creación, ahora que el id ya no es parte de lo que ve el usuario.
 	sort.Slice(projects, func(i, j int) bool {
-		iID, _ := projects[i]["id"].(float64)
-		jID, _ := projects[j]["id"].(float64)
-		return iID < jID
+		iCreated, _ := projects[i]["created_at"].(string)
+		jCreated, _ := projects[j]["created_at"].(string)
+		return iCreated < jCreated
 	})
 
 	fmt.Println("Elegí a qué proyecto conectar esta instancia:")
 	for i, p := range projects {
-		idFloat, _ := p["id"].(float64)
+		slug, _ := p["slug"].(string)
 		name, _ := p["name"].(string)
-		fmt.Printf("  %d) %s (id %d)\n", i+1, name, int(idFloat))
+		fmt.Printf("  %d) %s (%s)\n", i+1, name, slug)
 	}
-	fmt.Print("Número (o el ID directamente): ")
+	fmt.Print("Número (o el nombre del proyecto directamente): ")
 	choice := trimNewline(readLine())
-	n, err := strconv.Atoi(choice)
-	if err != nil {
-		return 0, fmt.Errorf("respuesta inválida: %q", choice)
+	if n, err := strconv.Atoi(choice); err == nil && n >= 1 && n <= len(projects) {
+		slug, _ := projects[n-1]["slug"].(string)
+		return slug, nil
 	}
-	if n >= 1 && n <= len(projects) {
-		idFloat, _ := projects[n-1]["id"].(float64)
-		return int(idFloat), nil
-	}
-	// No matcheó como índice de la lista — se acepta también como un ID
-	// de proyecto tipeado directo (útil si el usuario ya sabía cuál quería).
+	// No matcheó como índice de la lista — se acepta también como el slug
+	// tipeado directo (útil si el usuario ya sabía cuál quería).
 	for _, p := range projects {
-		idFloat, _ := p["id"].(float64)
-		if int(idFloat) == n {
-			return n, nil
+		if slug, _ := p["slug"].(string); slug == choice {
+			return slug, nil
 		}
 	}
-	return 0, fmt.Errorf("no encontré el proyecto %d en la lista de arriba", n)
+	return "", fmt.Errorf("no encontré el proyecto %q en la lista de arriba", choice)
 }
 
 // connectLocalInstance es el mecanismo compartido por `cloud connect` y
@@ -175,13 +175,13 @@ func resolveProjectID(client *apiclient.Client, flagProjectID int) (int, error) 
 // instancia local con un proyecto de Asterion Cloud, usando su id local
 // como identidad estable (external_ref) — la misma instancia, dos modos
 // de administración, nunca duplicada.
-func connectLocalInstance(projectID int, instance localstore.Instance) (instanceID int, rawKey string, alreadyConnected bool, err error) {
+func connectLocalInstance(projectSlug string, instance localstore.Instance) (instanceID int, rawKey string, alreadyConnected bool, err error) {
 	client, err := newAPIClient()
 	if err != nil {
 		return 0, "", false, err
 	}
 
-	result, err := client.ConnectLocalInstance(projectID, map[string]any{
+	result, err := client.ConnectLocalInstance(projectSlug, map[string]any{
 		"external_ref": instance.ID,
 		"name":         instance.Name,
 		"cpu_cores":    1,
@@ -203,7 +203,7 @@ func connectLocalInstance(projectID int, instance localstore.Instance) (instance
 }
 
 func cloudConnectCmd() *cobra.Command {
-	var projectID int
+	var projectSlug string
 	cmd := &cobra.Command{
 		Use:   "connect <nombre-local>",
 		Short: "Vincula una instancia de tu inventario local a un proyecto de Asterion Cloud",
@@ -221,13 +221,13 @@ func cloudConnectCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resolvedProjectID, err := resolveProjectID(client, projectID)
+			resolvedProjectSlug, err := resolveProjectSlug(client, projectSlug)
 			if err != nil {
 				return err
 			}
 
 			fmt.Println("✓ Instancia local encontrada:", instance.Name)
-			instanceID, rawKey, already, err := connectLocalInstance(resolvedProjectID, instance)
+			instanceID, rawKey, already, err := connectLocalInstance(resolvedProjectSlug, instance)
 			if err != nil {
 				return err
 			}
@@ -243,16 +243,16 @@ func cloudConnectCmd() *cobra.Command {
 				fmt.Println("  Clave del agente guardada localmente — corré 'asterion agent-run --local " + instance.ID + "' para empezar a reportar métricas.")
 			}
 
-			fmt.Printf("\nInstancia:\n  %s (id local %s)\n\nCloud:\n  proyecto %d\n\nEstado:\n  ● Conectado (id remoto %d)\n", instance.Name, instance.ID, resolvedProjectID, instanceID)
+			fmt.Printf("\nInstancia:\n  %s (id local %s)\n\nCloud:\n  proyecto %s\n\nEstado:\n  ● Conectado (id remoto %d)\n", instance.Name, instance.ID, resolvedProjectSlug, instanceID)
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto de Asterion Cloud (opcional — si se omite, se elige interactivamente)")
+	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud (opcional — si se omite, se elige interactivamente)")
 	return cmd
 }
 
 func cloudInstallAgentCmd() *cobra.Command {
-	var projectID int
+	var projectSlug string
 	var name string
 	cmd := &cobra.Command{
 		Use:   "install-agent",
@@ -267,7 +267,7 @@ func cloudInstallAgentCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resolvedProjectID, err := resolveProjectID(client, projectID)
+			resolvedProjectSlug, err := resolveProjectSlug(client, projectSlug)
 			if err != nil {
 				return err
 			}
@@ -284,7 +284,7 @@ func cloudInstallAgentCmd() *cobra.Command {
 			}
 
 			fmt.Println("✓ Instancia encontrada:", instance.Name)
-			instanceID, rawKey, already, err := connectLocalInstance(resolvedProjectID, instance)
+			instanceID, rawKey, already, err := connectLocalInstance(resolvedProjectSlug, instance)
 			if err != nil {
 				return err
 			}
@@ -305,11 +305,11 @@ func cloudInstallAgentCmd() *cobra.Command {
 				fmt.Println("✓ Agente instalado y corriendo (systemd --user)")
 			}
 
-			fmt.Printf("\nInstancia:\n  %s\n\nCloud:\n  proyecto %d (id remoto %d)\n\nEstado:\n  ● Conectado\n", instance.Name, resolvedProjectID, instanceID)
+			fmt.Printf("\nInstancia:\n  %s\n\nCloud:\n  proyecto %s (id remoto %d)\n\nEstado:\n  ● Conectado\n", instance.Name, resolvedProjectSlug, instanceID)
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto de Asterion Cloud (opcional — si se omite, se elige interactivamente)")
+	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud (opcional — si se omite, se elige interactivamente)")
 	cmd.Flags().StringVar(&name, "name", "", "Nombre para esta máquina (default: el hostname)")
 	return cmd
 }
@@ -320,7 +320,7 @@ func cloudInstallAgentCmd() *cobra.Command {
 // borra la clave local — nunca al revés, evita una ventana donde el
 // servicio siga corriendo con una clave que ya nadie va a revisar.
 func cloudUninstallAgentCmd() *cobra.Command {
-	var projectID int
+	var projectSlug string
 	cmd := &cobra.Command{
 		Use:   "uninstall-agent <nombre-local>",
 		Short: "Revoca el agente de una instancia y desinstala el servicio local",
@@ -339,7 +339,7 @@ func cloudUninstallAgentCmd() *cobra.Command {
 			// connect-local es idempotente: si ya estaba conectada, esto solo
 			// reusa la fila existente (sin duplicarla) para obtener su id
 			// remoto — es la única forma de saber qué revocar del lado de Cloud.
-			remoteID, _, _, err := connectLocalInstance(projectID, instance)
+			remoteID, _, _, err := connectLocalInstance(projectSlug, instance)
 			if err != nil {
 				return fmt.Errorf("no encontré la conexión a Cloud de %q: %w", instance.Name, err)
 			}
@@ -360,7 +360,7 @@ func cloudUninstallAgentCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto de Asterion Cloud al que estaba conectada")
+	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud al que estaba conectada")
 	_ = cmd.MarkFlagRequired("project")
 	return cmd
 }

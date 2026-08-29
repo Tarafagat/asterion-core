@@ -20,17 +20,17 @@ func instancesCmd() *cobra.Command {
 		Short: "Instancias — locales (perfiles SSH propios) o de un proyecto en Asterion Cloud",
 	}
 
-	var projectID int
+	var projectSlug string
 	listCmd := &cobra.Command{
 		Use:   "list",
 		Short: "Lista tus instancias locales, o las de un proyecto con --project",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if projectID != 0 {
+			if projectSlug != "" {
 				client, err := newAPIClient()
 				if err != nil {
 					return err
 				}
-				instances, err := client.ListInstances(projectID)
+				instances, err := client.ListInstances(projectSlug)
 				if err != nil {
 					return err
 				}
@@ -50,7 +50,7 @@ func instancesCmd() *cobra.Command {
 			return nil
 		},
 	}
-	listCmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto en Asterion Cloud (si se omite, lista instancias locales)")
+	listCmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud (si se omite, lista instancias locales)")
 
 	var name, host, user, identityFile string
 	var port int
