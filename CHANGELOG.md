@@ -152,6 +152,17 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
   `asterion-plugin-contract`).
 
 ### Changed
+- **Confirmado en vivo contra una máquina Linux real** (hasta ahora solo
+  se había probado en macOS): Asterion Lab con backend QEMU/KVM (mismo
+  YAML, mismo flujo `create`/`start`/`test`/`destroy`, misma regla `ufw`
+  real por SSH), el backend Docker de Asterion Lab (laboratorio
+  solo-contenedores y mixto contra un daemon Docker real), `internal/
+  sysinfo` leyendo `/proc`/`/sys` reales, y `asterion cloud install-agent`
+  instalando y corriendo el Remote Agent de verdad vía `systemd --user`.
+  READMEs de este repo, `asterion-lab` y `asterion-firewall-analysis`
+  actualizados para reflejar esto — las secciones "Qué falta" de cada uno
+  ya no listan Linux como pendiente, solo Windows y lo que seguía sin
+  implementar antes de esto.
 - Sacado (a favor de la tabla de Endpoints de solo lectura, más arriba): el
   tester interactivo que corría `list`/`create`/acciones en vivo contra el
   proxy de un plugin desde el propio dashboard. Con el panel embebido real

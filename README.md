@@ -253,7 +253,7 @@ asterion-core/
     sysinfo/          datos crudos de la máquina (CPU/RAM/disco/red) — sin costo, usado por 'local' y 'agent-run'
     runtime/          Runtime Engine: Environment Discovery, config persistente, doctor, SSH/red/firewall, risk analysis
     safety/           Capability system (detect/inspect/plan/apply/verify/rollback) + firewall plan — solo lectura por ahora
-    lab/              Asterion Lab: laboratorios de infraestructura en YAML, VMs QEMU reales (probado macOS/HVF) — ver README § Asterion Lab
+    lab/              Asterion Lab: laboratorios de infraestructura en YAML, VMs QEMU reales (probado macOS/HVF y Linux/KVM) — ver README § Asterion Lab
     plugins/          plugins de terceros: manifiesto, instalación (git clone), proceso propio, config cifrada — ver README § Plugins
     localauth/        token de acceso a `local serve` (~/.config/asterion/local-auth.yaml) — reemplaza el login con Google
     cliconfig/        config y sesión persistidas en ~/.config/asterion/
@@ -863,6 +863,16 @@ permitido sigue abierto, incluso con 3 VMs en la misma red. El ejemplo de
 arriba es literal — es el YAML que se corrió para probar esto, no uno
 ilustrativo.
 
+**Confirmado también en Linux nativo, con KVM**: el mismo YAML, el mismo
+flujo de punta a punta (`lab create` → `lab start` → `lab test` → `lab
+destroy`), corrido de verdad contra una máquina Linux real con `/dev/kvm`
+accesible — aceleración `kvm` activa, firmware AAVMF/OVMF encontrado por
+las rutas de Debian/Ubuntu/Fedora, seed de cloud-init armado con
+`genisoimage`/`mkisofs`/`xorriso` (el equivalente Linux de `hdiutil`, que
+es exclusivo de macOS), red VDE entre VMs, y la misma regla `ufw` real
+aplicada por SSH bloqueando/permitiendo el puerto correcto. Ya no es "el
+código está escrito" — corre igual que en macOS/HVF.
+
 **Es su propio módulo Go** (`asterion-lab/`, carpeta hermana de
 `asterion-core/`, no un paquete interno) — la razón es puramente de
 escala: red, firewall, snapshots, imágenes y orquestación de VMs son,
@@ -915,6 +925,12 @@ cuál. El catálogo de versiones de imágenes (`asterion images ...`)
 también se probó de punta a punta: pull con digest real capturado,
 listado, "olvidar" sin borrar de Docker, y borrado real (`docker rmi`) —
 confirmado con `docker images` antes y después de cada operación.
+
+El backend Docker (`docker/docker.go`) no tiene ninguna pieza específica
+de sistema operativo — todo pasa por el binario `docker` — y esto ya se
+confirmó en Linux además de macOS: mismo laboratorio solo de contenedores
+y mismo laboratorio mixto (VM QEMU + contenedor Docker) corridos de
+verdad contra un daemon Docker real en una máquina Linux.
 
 **Red de más de 2 VMs (VDE)**: la primera versión usaba `-netdev socket`
 de QEMU (enlace punto a punto, un solo `listen` no acepta más de un peer)
@@ -978,16 +994,10 @@ mismo comando (`vm snapshot create`, `vm clone`) funciona en los dos
 casos, Asterion decide internamente cuál camino tomar.
 
 **Qué falta, con precisión (para poder compilar/probar los demás
-adapters)**:
+adapters)**: Linux nativo (KVM) y Docker en Linux ya están confirmados en
+vivo (ver arriba) — lo que queda es Windows y backends más allá de QEMU/
+Docker.
 
-- **Linux nativo (KVM)**: el código está escrito (`qemu_linux.go`:
-  aceleración `kvm`, detección de firmware AAVMF/OVMF por las rutas de
-  Debian/Ubuntu/Fedora) pero nunca se corrió contra una máquina Linux real
-  — falta esa verificación. Necesita `qemu-system-{aarch64,x86_64}`,
-  `/dev/kvm` accesible, `vde2` para redes de 2+ VMs, y
-  `genisoimage`/`mkisofs`/`xorriso` instalado para el seed de cloud-init
-  (macOS no necesita esto porque usa `hdiutil`, Linux no trae un
-  equivalente por default).
 - **Windows (WHPX)**: `qemu_windows.go` declara el flag de aceleración
   correcto pero `findFirmware` devuelve `ErrNotImplemented` — no se probó
   ninguna ruta de instalación de QEMU en Windows, y `cloudinit_windows.go`
@@ -995,17 +1005,16 @@ adapters)**:
   pedir una herramienta aparte — candidatos: `oscdimg` del Windows ADK, o
   `mkisofs`/`xorriso` vía WSL/Chocolatey, ninguno evaluado). VDE también
   tiene build para Windows pero no se probó ahí.
+- **Docker en Windows**: el backend Docker (`docker/docker.go`) no tiene
+  ninguna pieza específica de sistema operativo — todo pasa por el
+  binario `docker`, así que en principio debería funcionar igual con
+  Docker instalado ahí, pero todavía no se probó en Windows.
 - **Backends más allá de QEMU y Docker** (Hyper-V, Apple Virtualization
   Framework, o backends cloud vía adapters — AWS/Azure/GCP/OCI): el mismo
   YAML de laboratorio ejecutándose contra infraestructura remota es la
   visión a largo plazo del spec, pero hoy todo asume procesos/contenedores
   locales — llevar esto a un backend remoto es un cambio de diseño grande,
   no una extensión chica.
-- **Docker en Linux/Windows**: el backend Docker (`docker/docker.go`) no
-  tiene ninguna pieza específica de sistema operativo — todo pasa por el
-  binario `docker`, así que en principio debería funcionar igual en
-  Linux/Windows con Docker instalado ahí, pero solo se probó en macOS
-  (contra Colima).
 - **Imágenes base QEMU**: el catálogo (`image/image.go`) hoy tiene 3
   entradas (`ubuntu-24.04`, `ubuntu-22.04`, `alpine-3.20`) para arm64/amd64
   — agregar una imagen nueva es una entrada más en `knownImages`, sin
@@ -1070,11 +1079,18 @@ por adapter sin tocar nada del resto del sistema.
 Linux (/proc, /sys) — en otros sistemas operativos devuelven un error claro
 en vez de un dato inventado. La detección física/VM/contenedor es una
 heurística de mejor esfuerzo (mira /.dockerenv, /proc/1/cgroup y DMI): si
-no puede confirmarlo, devuelve "unknown" en vez de adivinar.
+no puede confirmarlo, devuelve "unknown" en vez de adivinar. Confirmado en
+vivo contra una máquina Linux real: CPU/RAM/disco/red con valores reales,
+y la heurística de detección física/VM/contenedor devolviendo lo correcto
+para ese entorno.
 
 `asterion cloud install-agent` solo instala el servicio automáticamente en
 Linux (systemd --user); en otros sistemas operativos te muestra el comando
-para correrlo manualmente. El enrolamiento en sentido inverso — una
+para correrlo manualmente. Ya confirmado en vivo: el servicio queda
+instalado y corriendo de verdad vía `systemd --user` en una máquina Linux
+real, sobrevive a un logout/login, y `asterion agent-run` reporta
+heartbeat contra Asterion Cloud desde ahí. El enrolamiento en sentido
+inverso — una
 instancia que nace en Cloud (creada por el motor de aprovisionamiento o
 desde la web) y después instala el agente en una máquina nueva — todavía
 no tiene comando propio; hoy el flujo cableado es local → cloud.
