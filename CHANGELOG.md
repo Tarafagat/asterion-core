@@ -9,6 +9,17 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
+- **`asterion plugin build <nombre>`**: compila el binario de un plugin ya
+  instalado (`go build`, hoy solo para `language.name: go`) y, si tiene
+  frontend propio (`frontend/package.json`), también corre `pnpm install
+  && pnpm build` — en un solo comando, en vez de acordarse la ruta exacta
+  y los pasos a mano. Sigue siendo una acción explícita a propósito:
+  `install`/`start` nunca la disparan solos — Asterion no ejecuta código
+  de un plugin de terceros sin que el operador lo pida puntualmente, ni
+  siquiera para compilarlo. De yapa, `plugin start` ahora reconoce el
+  caso "el binario no existe todavía" y sugiere este comando en el
+  mensaje de error, en vez de solo mostrar el `fork/exec ... no such
+  file or directory` crudo.
 - **`asterion local tunnel start/stop/status/config`**: expone un puerto
   local (por default, el de `local serve` si está corriendo) con una URL
   pública HTTPS real vía Cloudflare Tunnel — sin abrir puertos en el

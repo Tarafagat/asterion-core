@@ -1,7 +1,9 @@
 package plugins
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -168,6 +170,13 @@ func Start(name string) (Installed, error) {
 
 	if err := cmd.Start(); err != nil {
 		out.Close()
+		if errors.Is(err, fs.ErrNotExist) {
+			return Installed{}, fmt.Errorf(
+				"no pude arrancar %q: %w — el binario todavía no está compilado. Si es un plugin en Go, "+
+					"'asterion plugin build %s' lo compila (y su frontend, si tiene)",
+				installed.Manifest.Start.Command, err, name,
+			)
+		}
 		return Installed{}, fmt.Errorf("no pude arrancar %q: %w", installed.Manifest.Start.Command, err)
 	}
 	pid := cmd.Process.Pid

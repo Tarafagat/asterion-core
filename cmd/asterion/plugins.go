@@ -26,6 +26,7 @@ func pluginsCmd() *cobra.Command {
 		pluginInstallCmd(),
 		pluginListCmd(),
 		pluginStatusCmd(),
+		pluginBuildCmd(),
 		pluginStartCmd(),
 		pluginStopCmd(),
 		pluginRemoveCmd(),
@@ -189,6 +190,31 @@ func pluginStatusCmd() *cobra.Command {
 				return err
 			}
 			printJSON(installed)
+			return nil
+		},
+	}
+}
+
+func pluginBuildCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "build <name>",
+		Short: "Compila el binario (y el frontend, si tiene) de un plugin ya instalado",
+		Long: "Paso explícito a propósito: Asterion nunca ejecuta código de un plugin de terceros por su\n" +
+			"cuenta, ni siquiera para compilarlo — este comando es ese pedido puntual del operador, no algo\n" +
+			"que 'install'/'start' disparen solos. Hoy solo sabe compilar plugins con language.name=\"go\"\n" +
+			"en su plugin.yaml (los dos oficiales, asterion-mail-plugin-basic y asterion-firewall-analysis,\n" +
+			"lo son) — si tiene frontend/package.json, también corre 'pnpm install && pnpm build' ahí.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Printf("Compilando %q...\n", args[0])
+			log, err := plugins.Build(args[0])
+			if log != "" {
+				fmt.Println(log)
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Printf("✓ Listo — 'asterion plugin start %s' ya debería funcionar\n", args[0])
 			return nil
 		},
 	}
