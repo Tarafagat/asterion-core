@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -99,6 +102,85 @@ func cloudLogoutCmd() *cobra.Command {
 	}
 }
 
+// resolveProjectID devuelve el proyecto a usar: si el usuario ya pasó
+// --project, se respeta tal cual. Si no, se listan sus proyectos y se le
+// pide elegir uno por número; si todavía no tiene ninguno, se lo guía a
+// crear uno ahí mismo (POST /projects) en vez de cortar el flujo con
+// "falta --project" y mandarlo a buscar el ID a mano en el dashboard.
+func resolveProjectID(client *apiclient.Client, flagProjectID int) (int, error) {
+	if flagProjectID != 0 {
+		return flagProjectID, nil
+	}
+
+	projects, err := client.ListProjects()
+	if err != nil {
+		return 0, fmt.Errorf("no pude listar tus proyectos: %w", err)
+	}
+
+	reader := bufio.NewReader(os.Stdin)
+
+	if len(projects) == 0 {
+		fmt.Println("Todavía no tenés ningún proyecto en Asterion Cloud.")
+		fmt.Print("¿Creamos uno ahora? [S/n]: ")
+		answer := strings.ToLower(trimNewline(readLine(reader)))
+		if answer != "" && answer != "s" && answer != "si" && answer != "sí" {
+			return 0, fmt.Errorf("no hay proyecto para usar — creá uno con la web o pasá --project")
+		}
+		fmt.Print("Nombre del proyecto: ")
+		name := trimNewline(readLine(reader))
+		if name == "" {
+			return 0, fmt.Errorf("el nombre del proyecto no puede estar vacío")
+		}
+		fmt.Print("Descripción (opcional): ")
+		description := trimNewline(readLine(reader))
+
+		created, err := client.CreateProject(name, description)
+		if err != nil {
+			return 0, fmt.Errorf("no pude crear el proyecto: %w", err)
+		}
+		idFloat, _ := created["id"].(float64)
+		fmt.Printf("✓ Proyecto %q creado (id %d)\n", name, int(idFloat))
+		return int(idFloat), nil
+	}
+
+	sort.Slice(projects, func(i, j int) bool {
+		iID, _ := projects[i]["id"].(float64)
+		jID, _ := projects[j]["id"].(float64)
+		return iID < jID
+	})
+
+	fmt.Println("Elegí a qué proyecto conectar esta instancia:")
+	for i, p := range projects {
+		idFloat, _ := p["id"].(float64)
+		name, _ := p["name"].(string)
+		fmt.Printf("  %d) %s (id %d)\n", i+1, name, int(idFloat))
+	}
+	fmt.Print("Número (o el ID directamente): ")
+	choice := trimNewline(readLine(reader))
+	n, err := strconv.Atoi(choice)
+	if err != nil {
+		return 0, fmt.Errorf("respuesta inválida: %q", choice)
+	}
+	if n >= 1 && n <= len(projects) {
+		idFloat, _ := projects[n-1]["id"].(float64)
+		return int(idFloat), nil
+	}
+	// No matcheó como índice de la lista — se acepta también como un ID
+	// de proyecto tipeado directo (útil si el usuario ya sabía cuál quería).
+	for _, p := range projects {
+		idFloat, _ := p["id"].(float64)
+		if int(idFloat) == n {
+			return n, nil
+		}
+	}
+	return 0, fmt.Errorf("no encontré el proyecto %d en la lista de arriba", n)
+}
+
+func readLine(reader *bufio.Reader) string {
+	line, _ := reader.ReadString('\n')
+	return line
+}
+
 // connectLocalInstance es el mecanismo compartido por `cloud connect` y
 // `cloud install-agent`: vincula (o reusa, si ya estaba vinculada) una
 // instancia local con un proyecto de Asterion Cloud, usando su id local
@@ -146,8 +228,17 @@ func cloudConnectCmd() *cobra.Command {
 				return err
 			}
 
+			client, err := newAPIClient()
+			if err != nil {
+				return err
+			}
+			resolvedProjectID, err := resolveProjectID(client, projectID)
+			if err != nil {
+				return err
+			}
+
 			fmt.Println("✓ Instancia local encontrada:", instance.Name)
-			instanceID, rawKey, already, err := connectLocalInstance(projectID, instance)
+			instanceID, rawKey, already, err := connectLocalInstance(resolvedProjectID, instance)
 			if err != nil {
 				return err
 			}
@@ -163,12 +254,11 @@ func cloudConnectCmd() *cobra.Command {
 				fmt.Println("  Clave del agente guardada localmente — corré 'asterion agent-run --local " + instance.ID + "' para empezar a reportar métricas.")
 			}
 
-			fmt.Printf("\nInstancia:\n  %s (id local %s)\n\nCloud:\n  proyecto %d\n\nEstado:\n  ● Conectado (id remoto %d)\n", instance.Name, instance.ID, projectID, instanceID)
+			fmt.Printf("\nInstancia:\n  %s (id local %s)\n\nCloud:\n  proyecto %d\n\nEstado:\n  ● Conectado (id remoto %d)\n", instance.Name, instance.ID, resolvedProjectID, instanceID)
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto de Asterion Cloud")
-	_ = cmd.MarkFlagRequired("project")
+	cmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto de Asterion Cloud (opcional — si se omite, se elige interactivamente)")
 	return cmd
 }
 
@@ -179,12 +269,18 @@ func cloudInstallAgentCmd() *cobra.Command {
 		Use:   "install-agent",
 		Short: "Registra ESTA máquina como una instancia del proyecto y deja el agente corriendo",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if projectID == 0 {
-				return fmt.Errorf("falta --project")
-			}
 			if name == "" {
 				hostname, _ := os.Hostname()
 				name = hostname
+			}
+
+			client, err := newAPIClient()
+			if err != nil {
+				return err
+			}
+			resolvedProjectID, err := resolveProjectID(client, projectID)
+			if err != nil {
+				return err
 			}
 
 			// Si esta máquina ya se había registrado antes, reusamos el
@@ -199,7 +295,7 @@ func cloudInstallAgentCmd() *cobra.Command {
 			}
 
 			fmt.Println("✓ Instancia encontrada:", instance.Name)
-			instanceID, rawKey, already, err := connectLocalInstance(projectID, instance)
+			instanceID, rawKey, already, err := connectLocalInstance(resolvedProjectID, instance)
 			if err != nil {
 				return err
 			}
@@ -220,13 +316,12 @@ func cloudInstallAgentCmd() *cobra.Command {
 				fmt.Println("✓ Agente instalado y corriendo (systemd --user)")
 			}
 
-			fmt.Printf("\nInstancia:\n  %s\n\nCloud:\n  proyecto %d (id remoto %d)\n\nEstado:\n  ● Conectado\n", instance.Name, projectID, instanceID)
+			fmt.Printf("\nInstancia:\n  %s\n\nCloud:\n  proyecto %d (id remoto %d)\n\nEstado:\n  ● Conectado\n", instance.Name, resolvedProjectID, instanceID)
 			return nil
 		},
 	}
-	cmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto de Asterion Cloud")
+	cmd.Flags().IntVar(&projectID, "project", 0, "ID del proyecto de Asterion Cloud (opcional — si se omite, se elige interactivamente)")
 	cmd.Flags().StringVar(&name, "name", "", "Nombre para esta máquina (default: el hostname)")
-	_ = cmd.MarkFlagRequired("project")
 	return cmd
 }
 

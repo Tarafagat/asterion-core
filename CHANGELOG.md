@@ -9,6 +9,19 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
+- **`--project` opcional en `asterion cloud connect`/`install-agent`**: si
+  se omite, se listan los proyectos de la cuenta ya logueada
+  (`GET /projects`) para elegir uno por número; si todavía no hay ninguno,
+  el propio comando ofrece crear uno ahí mismo (`POST /projects`, nombre +
+  descripción) en vez de cortar con "falta --project" y mandar al usuario
+  a buscar el ID a mano en el dashboard. `--project <id>` sigue
+  funcionando igual que antes para uso no interactivo/scripts. Nuevo
+  método `apiclient.Client.CreateProject`. Verificado en vivo contra un
+  servidor HTTP real (mock de `/projects` y `/instances/.../connect-local`
+  con las mismas formas de respuesta que el backend real): flujo de
+  alta de proyecto nuevo, selección por índice y por ID tipeado, y el
+  caso de entrada inválida — los tres funcionando end-to-end con el
+  binario compilado real, sin mockear código Go.
 - **`asterion plugin build <nombre>`**: compila el binario de un plugin ya
   instalado (`go build`, hoy solo para `language.name: go`) y, si tiene
   frontend propio (`frontend/package.json`), también corre `pnpm install

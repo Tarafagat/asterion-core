@@ -70,6 +70,11 @@ después decidir engancharse a Asterion Cloud sin recrear nada:
   ese `external_ref` ya estaba conectado, la API **reusa la misma fila**
   en vez de crear una nueva. Local y Cloud son dos modos de administración
   sobre el mismo recurso, nunca dos instancias distintas.
+  `--project <id>` es opcional en ambos comandos: si se omite, se listan
+  los proyectos de la cuenta logueada para elegir uno interactivamente, y
+  si todavía no hay ninguno, el propio comando ofrece crear uno ahí mismo
+  (nombre + descripción) en vez de mandar al usuario a buscar el ID a mano
+  en el dashboard.
 
 Una vez conectada, `asterion cloud install-agent` deja un servicio
 (`systemd --user` en Linux) corriendo `asterion agent-run` en la máquina,

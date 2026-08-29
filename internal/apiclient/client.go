@@ -144,6 +144,20 @@ func (c *Client) ListProjects() ([]map[string]any, error) {
 	return out, err
 }
 
+// CreateProject da de alta un proyecto nuevo en Asterion Cloud
+// (POST /projects) — quien lo crea queda como owner. Lo usa `asterion cloud
+// connect`/`install-agent` cuando el usuario no tiene ningún proyecto
+// todavía y elige crear uno ahí mismo en vez de cortar el flujo.
+func (c *Client) CreateProject(name, description string) (map[string]any, error) {
+	payload := map[string]any{"name": name}
+	if description != "" {
+		payload["description"] = description
+	}
+	var out map[string]any
+	err := c.do(http.MethodPost, "/projects", payload, &out)
+	return out, err
+}
+
 // ConnectLocalInstance vincula una instancia creada localmente
 // (asterion instances add) a un proyecto de Asterion Cloud, sin
 // duplicarla: si externalRef ya está conectado, la API devuelve la misma
