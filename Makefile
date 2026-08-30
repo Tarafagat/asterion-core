@@ -37,4 +37,13 @@ ifeq ($(VERSION),)
 else
 	go install -ldflags "-X main.version=$(VERSION)" ./cmd/asterion
 endif
-	@echo "✓ instalado en $$(go env GOPATH)/bin/$(BINARY)"
+	@installed="$$(go env GOPATH)/bin/$(BINARY)"; \
+	echo "✓ instalado en $$installed"; \
+	resolved="$$(command -v $(BINARY) 2>/dev/null)"; \
+	if [ -n "$$resolved" ] && [ "$$resolved" != "$$installed" ]; then \
+		echo ""; \
+		echo "⚠ '$(BINARY)' en tu \$$PATH resuelve a $$resolved, NO al que se acaba de instalar."; \
+		echo "  Vas a seguir corriendo el binario viejo hasta que resuelvas esto:"; \
+		echo "    sudo rm $$resolved          # si es un binario suelto de una instalación vieja"; \
+		echo "  o anteponé $$(go env GOPATH)/bin a tu \$$PATH."; \
+	fi

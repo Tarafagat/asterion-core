@@ -9,6 +9,18 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
+- **`make install` avisa si `asterion` en tu `$PATH` no resuelve al
+  binario que se acaba de instalar.** Encontrado en vivo: en una
+  instancia con un `asterion` viejo suelto en `/usr/local/bin` (de
+  antes de usar `go install`), `git pull` + `go install ./cmd/asterion`
+  compilaban bien el binario nuevo en `$GOPATH/bin`, pero como
+  `/usr/local/bin` está antes en el `$PATH`, seguía corriendo el viejo
+  sin ningún error — silencioso y confuso. Ahora `make install` compara
+  `command -v asterion` contra la ruta que acaba de instalar y, si
+  difieren, avisa cuál es el binario que realmente se está corriendo y
+  cómo sacarlo del medio. Verificado con un binario señuelo puesto a
+  propósito antes en el `$PATH`: dispara el aviso correcto; sin
+  señuelo, no dice nada de más.
 - **`asterion cloud disconnect <nombre-local> --project <slug>`** y
   **`asterion plugin disconnect <name> [--project <slug>]`** — lo que
   hacía falta para poder reconectar una instancia o plugin a OTRO
