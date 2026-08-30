@@ -281,6 +281,17 @@ go build -o asterion ./cmd/asterion
 go build -o asterion-core ./cmd/asterion-core
 ```
 
+Así compilado, `asterion --version`/`-v` muestra `dev` — no hay forma de
+saber la versión real sin un paso explícito. `make build` compila el
+mismo binario pero además le graba la versión del último commit (el
+prefijo `VX.Y` que ya usan los mensajes de commit de este repo, ver
+`Makefile`):
+
+```bash
+make build       # ./asterion --version -> vX.Y
+make version      # solo el número, para scripts
+```
+
 Para instalar `asterion` en tu `$GOPATH/bin` (y poder correrlo desde
 cualquier lado si ese directorio está en tu `$PATH`):
 

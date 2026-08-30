@@ -8,6 +8,64 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 
 ## [Unreleased]
 
+### Added
+- **`asterion --version`/`-v`** — imprime `asterion version vX.Y`. Un `go
+  build` plano queda en `dev` (no hay forma de saber la versión real sin
+  un paso explícito); `make build` (Makefile nuevo) compila el mismo
+  binario pero le graba la versión sacándola del prefijo `VX.Y` del
+  mensaje del último commit — la convención informal de versionado que ya
+  usan los commits de este repo y del resto del ecosistema, mientras no
+  haya releases etiquetados en git de verdad. `-X main.version=...` vía
+  `-ldflags`, mismo mecanismo que usa cualquier CLI en Go (kubectl,
+  docker, terraform) para esto — nada leyendo git en tiempo de ejecución,
+  así que funciona igual para un binario compilado en otra máquina sin
+  el repo clonado. `make version` imprime solo el número, para scripts.
+  El flag en sí es el mecanismo nativo de cobra (`rootCmd.Version = ...`,
+  agrega `--version` y, si nada más lo usa, `-v` solo) — confirmado sin
+  colisión con ningún otro flag del CLI.
+- **`asterion plugin update [name] [--all]`** — cierra el gap que el
+  propio spec de APC dejó anotado a propósito ("no hay un paso de
+  'update' separado en v1... hasta que exista una necesidad real"): `git
+  pull --ff-only` sobre el repo clonado de un plugin instalado
+  (`~/.config/asterion/plugins/repos/<name>`), o de todos con `--all`. Los
+  plugins `--link` se saltan siempre — ni siquiera necesitan ser un repo
+  git (ver `plugin install --help`), un pull automático ahí pisaría el
+  propio trabajo en desarrollo del autor. Un repo con `--all` que falla
+  (cambios propios sin commitear, rama divergida) no corta el resto. Si
+  el pull trajo `plugin.yaml` nuevo, `state.json` se refresca con el
+  manifest actualizado en el momento — mismo criterio que ya usa `Start()`
+  al arrancar, aplicado ahora también acá. Actualizar el código no
+  recompila ni reinicia el plugin solo (`asterion plugin build`/`stop`+
+  `start` siguen siendo pasos aparte).
+- **`asterion upgrade [name] [--dir] [--list]`** — package nuevo,
+  `internal/upgrade`, sin relación con lo anterior: actualiza los repos
+  hermanos del propio ecosistema Asterion en el workspace de desarrollo
+  (`asterion-core`, `asterion-language`, `asterion-plugin-contract`,
+  etc.), nunca la carpeta de plugins instalados. Encuentra el workspace
+  subiendo desde el directorio actual hasta hallar una carpeta con
+  `asterion-core` adentro (sin ruta fija hardcodeada), y lista cualquier
+  subcarpeta `asterion*` con `.git` propio — `asterion-plugin-contract`
+  es un repo más de esa lista, una sola vez en el filesystem aunque
+  `asterion-core` y `asterion-language` lo referencien cada uno con su
+  propio `replace` en `go.mod`.
+  - **Bug real encontrado en la verificación de este cambio**: un `git
+    pull` sin argumentos falla con "There is no tracking information for
+    the current branch" en cualquier repo cuya rama actual no tenga
+    upstream configurado (pasa hoy con `asterion-language`, clonado/creado
+    sin `git push -u`) — no es un problema del repo, es que git no
+    adivina solo. Se agregó un fallback: si el pull simple falla por eso
+    específicamente, se reintenta una vez, explícito, contra
+    `origin/<rama actual>` — mismo resultado que un `git pull origin
+    main` a mano. Mismo fix aplicado a `plugin update` (comparten la
+    lógica de pull).
+  - Verificado en vivo contra los 9 repos reales del workspace: `--list`
+    los encuentra todos correctamente (incluido `asterion-plugin-contract`
+    una sola vez); actualizar de a uno y todos juntos funciona (`git
+    pull --ff-only`, con el fallback de tracking cubriendo
+    `asterion-language`); nombre inexistente y `--dir` apuntando a una
+    carpeta sin `asterion-core` dan error claro; `--json` da una forma
+    estable.
+
 ### Changed
 - **`asterion plugin from-ast` → `asterion plugin from-asterion`**,
   siguiendo el rename de extensión en el repo hermano `asterion-language`

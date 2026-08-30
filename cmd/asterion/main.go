@@ -18,9 +18,20 @@ import (
 	"asterion-core/internal/coreclient"
 )
 
+// version se pisa en tiempo de build con -ldflags "-X main.version=vX.Y"
+// (ver el target 'build' del Makefile, que la saca sola del prefijo
+// "VX.Y" del último commit — la misma convención informal de versionado
+// que ya se usa en los mensajes de commit de este repo y del resto del
+// ecosistema, mientras no haya releases etiquetados en git de verdad). Un
+// 'go build' plano sin ese flag se queda con "dev": no hay forma de
+// saber la versión real sin el paso explícito del Makefile, y "dev" es
+// más honesto que inventar un número.
+var version = "dev"
+
 var rootCmd = &cobra.Command{
-	Use:   "asterion",
-	Short: "CLI de Asterion — aprovisionamiento multi-nube",
+	Use:     "asterion",
+	Short:   "CLI de Asterion — aprovisionamiento multi-nube",
+	Version: version,
 	Long: "asterion es el cliente de línea de comandos de Asterion.\n" +
 		"Describe, planifica, estima y aplica infraestructura contra tu cuenta de Asterion.",
 }
@@ -47,6 +58,7 @@ func main() {
 		imagesCmd(),
 		pluginsCmd(),
 		languageCmd(),
+		upgradeCmd(),
 	)
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
