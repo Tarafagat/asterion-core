@@ -23,3 +23,18 @@ endif
 .PHONY: version
 version:
 	@echo $(if $(VERSION),$(VERSION),dev)
+
+# Recompila e instala en $GOPATH/bin (mismo lugar que 'go install' de
+# siempre) — para actualizar el binario real que corrés desde cualquier
+# lado sin tener que copiarlo a mano. Único paso que hace falta después
+# de cualquier cambio a este repo: Go no tiene "hot reload" para un CLI,
+# el binario instalado queda con el código de la última vez que se
+# instaló hasta que se vuelve a correr esto.
+.PHONY: install
+install:
+ifeq ($(VERSION),)
+	go install ./cmd/asterion
+else
+	go install -ldflags "-X main.version=$(VERSION)" ./cmd/asterion
+endif
+	@echo "✓ instalado en $$(go env GOPATH)/bin/$(BINARY)"
