@@ -63,18 +63,22 @@ después decidir engancharse a Asterion Cloud sin recrear nada:
 - **Local** (`asterion instances add/list/connect/remove`): un inventario
   de hosts SSH 100% en tu máquina (`~/.config/asterion/instances.json`).
   No requiere sesión ni toca la API de Asterion en absoluto.
-- **Cloud** (`asterion cloud connect`, `asterion cloud install-agent`):
-  vincula una instancia local a un proyecto de Asterion Cloud. La
-  identidad real del recurso es su id local (`inst_xxxxxxxx`, generado una
-  sola vez al crearla) — se manda como `external_ref` al conectar, y si
-  ese `external_ref` ya estaba conectado, la API **reusa la misma fila**
-  en vez de crear una nueva. Local y Cloud son dos modos de administración
-  sobre el mismo recurso, nunca dos instancias distintas.
-  `--project <id>` es opcional en ambos comandos: si se omite, se listan
-  los proyectos de la cuenta logueada para elegir uno interactivamente, y
-  si todavía no hay ninguno, el propio comando ofrece crear uno ahí mismo
-  (nombre + descripción) en vez de mandar al usuario a buscar el ID a mano
-  en el dashboard.
+- **Cloud** (`asterion cloud connect`, `asterion cloud install-agent`,
+  `asterion cloud disconnect`): vincula una instancia local a un proyecto
+  de Asterion Cloud. La identidad real del recurso es su id local
+  (`inst_xxxxxxxx`, generado una sola vez al crearla) — se manda como
+  `external_ref` al conectar, y si ese `external_ref` ya estaba conectado
+  AL MISMO proyecto, la API **reusa la misma fila** en vez de crear una
+  nueva; si ya está conectado a OTRO proyecto, lo rechaza (409) — hay que
+  `cloud disconnect` primero (pide confirmar con un código de un solo uso
+  por email, mismo mecanismo que `cloud login`). Local y Cloud son dos
+  modos de administración sobre el mismo recurso, nunca dos instancias
+  distintas. `--project <slug>` es opcional en `connect`/`install-agent`
+  (obligatorio en `disconnect`, para saber de qué proyecto desvincularla):
+  si se omite donde es opcional, se listan los proyectos de la cuenta
+  logueada para elegir uno interactivamente, y si todavía no hay ninguno,
+  el propio comando ofrece crear uno ahí mismo (nombre + descripción) en
+  vez de mandar al usuario a buscar el slug a mano en el dashboard.
 
 Una vez conectada, `asterion cloud install-agent` deja un servicio
 (`systemd --user` en Linux) corriendo `asterion agent-run` en la máquina,
@@ -255,6 +259,7 @@ asterion-core/
     safety/           Capability system (detect/inspect/plan/apply/verify/rollback) + firewall plan — solo lectura por ahora
     lab/              Asterion Lab: laboratorios de infraestructura en YAML, VMs QEMU reales (probado macOS/HVF y Linux/KVM) — ver README § Asterion Lab
     plugins/          plugins de terceros: manifiesto, instalación (git clone), proceso propio, config cifrada — ver README § Plugins
+    upgrade/          'asterion upgrade': git pull en los repos hermanos del propio ecosistema (workspace de desarrollo) — nada que ver con internal/plugins, que administra plugins de terceros instalados
     localauth/        token de acceso a `local serve` (~/.config/asterion/local-auth.yaml) — reemplaza el login con Google
     cliconfig/        config y sesión persistidas en ~/.config/asterion/
   backend-core/       servicio local Python/FastAPI: login con token propio, métricas (psutil), costo estimado
@@ -292,12 +297,42 @@ make build       # ./asterion --version -> vX.Y
 make version      # solo el número, para scripts
 ```
 
-Para instalar `asterion` en tu `$GOPATH/bin` (y poder correrlo desde
-cualquier lado si ese directorio está en tu `$PATH`):
+Para instalar `asterion` de forma que puedas correrlo desde cualquier
+lado sin pensar en `$PATH`, usá el Makefile en vez de `go install` a
+secas:
 
 ```bash
-go install ./cmd/asterion
+make install
 ```
+
+Deja el binario en **dos** lugares a la vez, con la versión ya grabada:
+`$GOPATH/bin` (sin permisos especiales) y `/usr/local/bin` (con `sudo`
+si hace falta — ya está en el `$PATH` de cualquier shell sin configurar
+nada). Bug real que esto evita: si ya tenías un `asterion` viejo suelto
+en `/usr/local/bin` (de una instalación manual anterior) y actualizás
+solo con `go install`, ese viejo binario puede seguir ganándole en el
+`$PATH` al nuevo — en silencio, sin ningún error, corriendo comandos
+desactualizados. `make install` mantiene los dos lugares siempre
+idénticos, así que no importa cuál resuelva primero tu terminal — y si
+el `sudo` falla (por ejemplo corriendo esto sin una terminal
+interactiva), te lo dice explícitamente en vez de fingir que quedó
+listo. La alternativa manual, sin el `Makefile`, sigue siendo
+`go install ./cmd/asterion` (deja `asterion --version` en `dev`, sin el
+número de versión, y no toca `/usr/local/bin`).
+
+Con ese workspace armado (este repo más los hermanos que necesites —
+`asterion-lab`, `asterion-plugin-contract`, `asterion-language` — como
+carpetas al lado), `asterion upgrade` los mantiene al día sin tener que
+entrar a cada uno a mano:
+
+```bash
+asterion upgrade --list          # ver qué repos encontraría, sin tocar nada
+asterion upgrade                 # git pull --ff-only en todos los que encuentre
+asterion upgrade asterion-lab    # o solo uno puntual
+```
+
+No tiene nada que ver con los plugins de terceros instalados (sección
+más abajo) — es exclusivamente el propio código fuente del ecosistema.
 
 ## Levantar asterion-core
 
@@ -491,8 +526,11 @@ proceso murió a mitad de camino) y lo expone en
 en el dashboard de Cloud.
 
 ```bash
-asterion agent status <nombre-local>       # estado LOCAL: clave guardada, systemd
-asterion cloud uninstall-agent <nombre-local> --project <id>   # revoca en Cloud + desinstala el servicio local
+asterion agent status                      # estado LOCAL de ESTA máquina: clave guardada, systemd/launchd —
+                                            # identifica sola la instancia (Host=localhost), sin pasarle nombre
+asterion agent status <nombre-local>       # o el estado de cualquier otra instancia de tu inventario local
+asterion cloud disconnect <nombre-local> --project <slug>       # desvincula del proyecto (pide código por email)
+asterion cloud uninstall-agent <nombre-local> --project <slug>  # revoca en Cloud + desinstala el servicio local
 ```
 
 ## Plugins de terceros
@@ -521,7 +559,11 @@ asterion plugin start sii     # puerto libre elegido solo, espera el health chec
 asterion plugin list          # todos los instalados, con estado real (reconciliado contra el pid)
 asterion plugin stop sii
 asterion plugin remove sii    # para, borra el repo clonado y su config
-asterion plugin connect sii --project 1   # lo vincula a un proyecto de Asterion Cloud
+asterion plugin update sii            # git pull --ff-only del repo clonado (--link se saltea siempre)
+asterion plugin update --all          # ídem, para todos los instalados — uno que falla no corta el resto
+asterion plugin connect sii --project mi-proyecto-a3f9c1   # lo vincula a un proyecto de Asterion Cloud
+asterion plugin connect --all --project mi-proyecto-a3f9c1 # ídem, todos los instalados al mismo proyecto
+asterion plugin disconnect sii        # lo desvincula (libre para reconectarlo a otro proyecto) — pide código por email
 
 # crear un plugin nuevo
 asterion plugin init mi-plugin --language go      # scaffold: ya cumple el contrato, compila tal cual
@@ -653,10 +695,15 @@ Puntos clave de diseño:
   `external_ref` (`plg_` + 128 bits de `crypto/rand`) generado una sola vez
   en esta máquina — la misma idea que `inst_xxxxxxxx` para instancias (ver
   más arriba). `asterion plugin connect` lo manda a
-  `POST /projects/{id}/plugins/connect-local`: si ese mismo plugin se
-  reconecta, Cloud reusa la fila existente en vez de duplicarla. Cloud
-  nunca ve el proceso del plugin ni su configuración — solo que existe, su
-  nombre/versión, y a qué proyecto pertenece.
+  `POST /projects/{project_slug}/plugins/connect-local`: si ese mismo
+  plugin se reconecta AL MISMO proyecto, Cloud reusa la fila existente en
+  vez de duplicarla; si ya está conectado a OTRO proyecto, lo rechaza
+  (409) — hay que `asterion plugin disconnect` primero (pide confirmar
+  con un código de un solo uso por email, mismo mecanismo que
+  `cloud login`), y recién ahí queda libre para conectarse a cualquier
+  proyecto, el mismo de antes o uno distinto. Cloud nunca ve el proceso
+  del plugin ni su configuración — solo que existe, su nombre/versión, y
+  a qué proyecto pertenece.
 - **La instalación entera es portable.** Todo lo de este sistema vive bajo
   `~/.config/asterion/plugins/` (repos clonados, estado, config cifrada,
   la master key) — clonar `~/.config/asterion/` completo a otra máquina

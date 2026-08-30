@@ -34,11 +34,22 @@ func agentCmd() *cobra.Command {
 
 func agentStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status <nombre-local>",
-		Short: "Muestra si el agente de esta instancia local está instalado y corriendo",
-		Args:  cobra.ExactArgs(1),
+		Use:   "status [nombre-local]",
+		Short: "Muestra si el agente de esta máquina (o, con un nombre, de esa instancia local) está instalado y corriendo",
+		Long: "Sin argumento, identifica sola la instancia que representa A ESTA MÁQUINA — la que\n" +
+			"'asterion cloud install-agent' registró acá (Host=localhost es la marca real, no el\n" +
+			"nombre: funciona aunque se haya usado --name para elegir un nombre distinto del\n" +
+			"hostname). Pasá un nombre explícito para consultar cualquier otra instancia de tu\n" +
+			"inventario local.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			instance, err := localstore.Get(args[0])
+			var instance localstore.Instance
+			var err error
+			if len(args) == 1 {
+				instance, err = localstore.Get(args[0])
+			} else {
+				instance, err = resolveSelfInstance()
+			}
 			if err != nil {
 				return err
 			}
@@ -74,6 +85,47 @@ func agentStatusCmd() *cobra.Command {
 			})
 			return nil
 		},
+	}
+}
+
+// resolveSelfInstance encuentra, en el inventario local, el perfil que
+// representa A ESTA MÁQUINA — el que 'cloud install-agent' registra
+// siempre con Host="localhost" (ver cloud.go:cloudInstallAgentCmd). Es el
+// marcador real, no el nombre: install-agent arma el nombre por default a
+// partir del hostname ("self-" + hostname), pero --name puede pisarlo, así
+// que adivinar por nombre sería frágil. Si hay más de un perfil marcado
+// así (alguien agregó "localhost" a mano con 'instances add', por
+// ejemplo), no adivina cuál — lista los nombres y pide uno explícito.
+func resolveSelfInstance() (localstore.Instance, error) {
+	list, err := localstore.List()
+	if err != nil {
+		return localstore.Instance{}, err
+	}
+
+	var self []localstore.Instance
+	for _, inst := range list {
+		if inst.Host == "localhost" {
+			self = append(self, inst)
+		}
+	}
+
+	switch len(self) {
+	case 0:
+		return localstore.Instance{}, fmt.Errorf(
+			"esta máquina no tiene ningún agente instalado — corré 'asterion cloud install-agent' primero, " +
+				"o pasá el nombre de una instancia local: 'asterion agent status <nombre>'",
+		)
+	case 1:
+		return self[0], nil
+	default:
+		names := make([]string, len(self))
+		for i, inst := range self {
+			names[i] = inst.Name
+		}
+		return localstore.Instance{}, fmt.Errorf(
+			"hay %d instancias locales que podrían ser esta máquina (%s) — pasá el nombre explícito: 'asterion agent status <nombre>'",
+			len(self), strings.Join(names, ", "),
+		)
 	}
 }
 

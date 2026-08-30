@@ -8,7 +8,34 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 
 ## [Unreleased]
 
-### Added
+### Changed
+- **`README.md` puesto al día con todo lo de esta sesión** — el usuario
+  pidió actualizar la documentación después de agregar `agent status`
+  sin argumento, y al revisar aparecieron varios huecos más en el mismo
+  README (no solo ese comando): `## Compilar` no mencionaba `make
+  install` en absoluto (solo `go install` a secas, y en un lugar
+  separado del que ya explicaba `make build`/`--version`); tampoco
+  mencionaba `asterion upgrade`, justo donde ya se explica que hay que
+  clonar los repos hermanos al lado. La sección de plugins no
+  documentaba `plugin update`, `plugin connect --all` ni `plugin
+  disconnect` en absoluto. Y de paso aparecieron referencias
+  desactualizadas de antes del cambio de proyectos por id numérico a
+  slug (`--project <id>`, `POST /projects/{id}/plugins/connect-local`)
+  en dos lugares — corregidas a `<slug>`/`{project_slug}`, que es lo
+  que la API realmente espera hoy.
+- **`asterion agent status` ya no exige el nombre de la instancia —
+  identifica sola la que representa esta máquina.** Reporte del usuario:
+  tenía que acordarse y tipear el nombre exacto (`self-<hostname>`) cada
+  vez. Ahora, sin argumento, busca en el inventario local la instancia
+  marcada con `Host=localhost` — la misma marca que `cloud install-agent`
+  ya deja siempre, independiente del nombre elegido (con o sin `--name`).
+  Cero instancias así → error claro pidiendo correr `install-agent`
+  primero; más de una (inusual, alguien agregó "localhost" a mano) →
+  lista los nombres candidatos y pide uno explícito en vez de adivinar
+  cuál. Pasar un nombre sigue funcionando exactamente igual que antes.
+  Verificado en vivo (sin necesitar backend, es 100% local): sin
+  instancias, con una, con dos, y con nombre explícito — los cuatro
+  casos.
 - **`cloud disconnect` y `plugin disconnect` ahora piden confirmación por
   código de un solo uso, mandado al email de la sesión activa** — a
   pedido explícito del usuario: "que nadie pueda apretar directamente
