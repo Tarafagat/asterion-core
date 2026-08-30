@@ -178,6 +178,17 @@ func (c *Client) ConnectLocalPlugin(projectSlug string, payload map[string]any) 
 	return out, err
 }
 
+// DisconnectPlugin desconecta un plugin de un proyecto de Asterion Cloud
+// (DELETE /projects/{slug}/plugins/{id}) — a diferencia de una instancia
+// (ver DeleteInstance), acá el backend no borra la fila: la marca
+// 'disconnected', lo que deja su external_ref libre para reconectarse al
+// mismo proyecto o a uno distinto (ver connect_local_plugin del backend).
+// No toca nada de la instalación local — para eso está
+// 'asterion plugin remove'.
+func (c *Client) DisconnectPlugin(projectSlug string, pluginID int) error {
+	return c.do(http.MethodDelete, fmt.Sprintf("/projects/%s/plugins/%d", projectSlug, pluginID), nil, nil)
+}
+
 // ListPlugins lista los plugins conectados a un proyecto.
 func (c *Client) ListPlugins(projectSlug string) ([]map[string]any, error) {
 	var out []map[string]any
@@ -208,6 +219,17 @@ func (c *Client) GetAgentStatus(instanceID int) (map[string]any, error) {
 // desinstalar el servicio local con `asterion cloud uninstall-agent`.
 func (c *Client) RevokeAgent(instanceID int) error {
 	return c.do(http.MethodPost, fmt.Sprintf("/instances/%d/agent/revoke", instanceID), nil, nil)
+}
+
+// DeleteInstance desconecta una instancia de Asterion Cloud por completo
+// (DELETE /instances/{id}) — a diferencia de un plugin (ver
+// DisconnectPlugin), acá no hay estado intermedio 'disconnected': la fila
+// se borra, lo que deja su external_ref libre para volver a conectarse a
+// cualquier proyecto (el mismo u otro) la próxima vez con
+// 'asterion cloud connect'. No toca nada del perfil SSH local
+// (localstore) — para eso está 'asterion instances remove'.
+func (c *Client) DeleteInstance(instanceID int) error {
+	return c.do(http.MethodDelete, fmt.Sprintf("/instances/%d", instanceID), nil, nil)
 }
 
 // ListCloudAccounts lista las cuentas cloud conectadas a un proyecto.

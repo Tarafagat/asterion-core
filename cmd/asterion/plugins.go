@@ -9,6 +9,7 @@ import (
 
 	"github.com/Tarafagat/asterion-plugin-contract/sdk/go/scaffold"
 
+	"asterion-core/internal/apiclient"
 	"asterion-core/internal/plugins"
 )
 
@@ -34,6 +35,7 @@ func pluginsCmd() *cobra.Command {
 		pluginRemoveCmd(),
 		pluginConfigCmd(),
 		pluginConnectCmd(),
+		pluginDisconnectCmd(),
 		pluginInitCmd(),
 		pluginValidateCmd(),
 		pluginDevCmd(),
@@ -432,37 +434,123 @@ func pluginConfigShowCmd() *cobra.Command {
 	}
 }
 
+// connectResult es el resultado de conectar UN plugin instalado a un
+// proyecto — una fila del reporte que arma --all. Vive acá (no en
+// internal/plugins) porque conectar de por sí ya cruza dos paquetes
+// (plugins.Save + apiclient.Client.ConnectLocalPlugin), igual que ya
+// hacía el código de un solo plugin antes de esto.
+type connectResult struct {
+	Installed        plugins.Installed `json:"installed"`
+	AlreadyConnected bool              `json:"already_connected"`
+	Error            string            `json:"error,omitempty"`
+}
+
+func connectOne(client *apiclient.Client, projectSlug string, installed plugins.Installed) connectResult {
+	result, err := client.ConnectLocalPlugin(projectSlug, map[string]any{
+		"external_ref": installed.ExternalRef,
+		"name":         installed.Name,
+		"version":      installed.Manifest.Version,
+		"source_repo":  installed.Manifest.Repo,
+	})
+	if err != nil {
+		return connectResult{Installed: installed, Error: err.Error()}
+	}
+
+	already, _ := result["already_connected"].(bool)
+	installed.ConnectedProjectSlug = projectSlug
+	if err := plugins.Save(installed); err != nil {
+		return connectResult{Installed: installed, Error: err.Error()}
+	}
+	return connectResult{Installed: installed, AlreadyConnected: already}
+}
+
+func printConnectResult(r connectResult) {
+	if r.Error != "" {
+		fmt.Printf("✗ %s — %s\n", r.Installed.Name, r.Error)
+		return
+	}
+	if r.AlreadyConnected {
+		fmt.Printf("✓ %s — ya estaba conectado (se reusó el mismo registro, no se duplicó)\n", r.Installed.Name)
+	} else {
+		fmt.Printf("✓ %s — conectado\n", r.Installed.Name)
+	}
+}
+
 // pluginConnectCmd vincula un plugin instalado localmente a un proyecto de
 // Asterion Cloud — mismo mecanismo que cloudConnectCmd para instancias
 // (ver cloud.go:connectLocalInstance): external_ref como identidad
 // estable, reusa la fila si ya estaba conectado en vez de duplicarla.
 // Tanto <name> como --project son opcionales: sin ellos, el comando lista
 // los plugins instalados y los proyectos disponibles para elegir
-// interactivamente (mismo criterio que 'asterion cloud connect').
+// interactivamente (mismo criterio que 'asterion cloud connect'). Con
+// --all, conecta TODOS los plugins instalados al mismo proyecto (resuelto
+// una sola vez, antes de recorrerlos) — un plugin que falla no corta el
+// resto, mismo criterio que 'plugin update --all'.
 func pluginConnectCmd() *cobra.Command {
 	var projectSlug string
 	var asJSON bool
+	var all bool
 	cmd := &cobra.Command{
 		Use:   "connect [name]",
-		Short: "Vincula un plugin instalado localmente a un proyecto de Asterion Cloud",
+		Short: "Vincula uno (o, con --all, todos) los plugins instalados localmente a un proyecto de Asterion Cloud",
 		Long: "No duplica el plugin del lado de Cloud si ya estaba conectado: la identidad\n" +
 			"real es el id local (external_ref) generado al instalarlo — Local y Cloud son\n" +
 			"dos formas de ver el mismo plugin, nunca dos filas distintas.\n\n" +
-			"Si se omite [name], lista los plugins instalados en esta máquina para elegir uno\n" +
-			"(igual que 'asterion plugin find'). Si se omite --project, lista tus proyectos de\n" +
-			"Asterion Cloud para elegir uno, u ofrece crear uno nuevo si todavía no tenés ninguno.",
+			"Si se omite [name] (y no se pasa --all), lista los plugins instalados en esta\n" +
+			"máquina para elegir uno (igual que 'asterion plugin find'). Si se omite\n" +
+			"--project, lista tus proyectos de Asterion Cloud para elegir uno, u ofrece crear\n" +
+			"uno nuevo si todavía no tenés ninguno — con --all, ese proyecto se resuelve una\n" +
+			"sola vez y se usa para todos.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := ""
 			if len(args) == 1 {
 				name = args[0]
 			}
-			installed, err := resolveInstalledPlugin(name)
+			if all && name != "" {
+				return fmt.Errorf("pasá un nombre o --all, no los dos")
+			}
+
+			client, err := newAPIClient()
 			if err != nil {
 				return err
 			}
 
-			client, err := newAPIClient()
+			if all {
+				list, err := plugins.List()
+				if err != nil {
+					return err
+				}
+				if len(list) == 0 {
+					return fmt.Errorf("no hay ningún plugin instalado en esta máquina — 'asterion plugin install <repo-url>' primero")
+				}
+				resolvedProjectSlug, err := resolveProjectSlug(client, projectSlug)
+				if err != nil {
+					return err
+				}
+				results := make([]connectResult, 0, len(list))
+				for _, installed := range list {
+					results = append(results, connectOne(client, resolvedProjectSlug, installed))
+				}
+				if asJSON {
+					printJSON(map[string]any{"project": resolvedProjectSlug, "results": results})
+					return nil
+				}
+				fmt.Printf("Proyecto: %s\n\n", resolvedProjectSlug)
+				anyErr := false
+				for _, r := range results {
+					printConnectResult(r)
+					if r.Error != "" {
+						anyErr = true
+					}
+				}
+				if anyErr {
+					return fmt.Errorf("algún plugin no se pudo conectar — ver el detalle arriba")
+				}
+				return nil
+			}
+
+			installed, err := resolveInstalledPlugin(name)
 			if err != nil {
 				return err
 			}
@@ -470,28 +558,19 @@ func pluginConnectCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-
-			result, err := client.ConnectLocalPlugin(resolvedProjectSlug, map[string]any{
-				"external_ref": installed.ExternalRef,
-				"name":         installed.Name,
-				"version":      installed.Manifest.Version,
-				"source_repo":  installed.Manifest.Repo,
-			})
-			if err != nil {
-				return err
-			}
-
-			already, _ := result["already_connected"].(bool)
-			installed.ConnectedProjectSlug = resolvedProjectSlug
-			if err := plugins.Save(installed); err != nil {
-				return err
-			}
+			result := connectOne(client, resolvedProjectSlug, installed)
 
 			if asJSON {
-				printJSON(map[string]any{"installed": installed, "already_connected": already})
+				printJSON(result)
+				if result.Error != "" {
+					return fmt.Errorf("%s", result.Error)
+				}
 				return nil
 			}
-			if already {
+			if result.Error != "" {
+				return fmt.Errorf("%s", result.Error)
+			}
+			if result.AlreadyConnected {
 				fmt.Println("✓ Ya estaba conectado a Asterion Cloud (se reusó el mismo registro, no se duplicó)")
 			} else {
 				fmt.Println("✓ Plugin conectado a Asterion Cloud")
@@ -501,6 +580,86 @@ func pluginConnectCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud (opcional — si se omite, se elige interactivamente)")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el resultado como JSON en vez de texto")
+	cmd.Flags().BoolVar(&all, "all", false, "Conectar todos los plugins instalados al mismo proyecto")
+	return cmd
+}
+
+// pluginDisconnectCmd es lo que hace falta para poder reconectar un plugin
+// a OTRO proyecto: mientras siga 'connected', connect_local_plugin del
+// backend rechaza con 409 cualquier intento de conectarlo a un proyecto
+// distinto (chequeo real por status, no solo de nombre — el backend tenía
+// un bug real acá, corregido junto con esto: un plugin desconectado
+// seguía bloqueando para siempre la reconexión a otro proyecto porque la
+// fila nunca perdía su project_id viejo). A diferencia de
+// 'cloud disconnect' (instancias), acá --project es opcional: el propio
+// 'plugin connect' ya guarda a qué proyecto quedó conectado cada plugin en
+// state.json, así que por default se usa ese.
+func pluginDisconnectCmd() *cobra.Command {
+	var projectSlug string
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "disconnect <name>",
+		Short: "Desconecta un plugin de su proyecto de Asterion Cloud (libre para reconectarlo a otro)",
+		Long: "El backend no borra el registro, lo marca 'disconnected' (para no perder el\n" +
+			"historial) — pero eso alcanza para que 'asterion plugin connect' pueda volver a\n" +
+			"conectarlo, al mismo proyecto o a uno distinto. No toca nada de la instalación\n" +
+			"local (para eso está 'asterion plugin remove').",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			installed, err := plugins.Get(args[0])
+			if err != nil {
+				return err
+			}
+
+			resolvedProjectSlug := projectSlug
+			if resolvedProjectSlug == "" {
+				resolvedProjectSlug = installed.ConnectedProjectSlug
+			}
+			if resolvedProjectSlug == "" {
+				return fmt.Errorf("no sé a qué proyecto está conectado %q — pasá --project", installed.Name)
+			}
+
+			client, err := newAPIClient()
+			if err != nil {
+				return err
+			}
+
+			// connect-local es idempotente: resuelve el id remoto del plugin
+			// en ese proyecto sin duplicar nada — es la única forma de saber
+			// qué desconectar del lado de Cloud. Si en realidad está
+			// conectado a OTRO proyecto, esto mismo lo va a decir con el 409
+			// de siempre.
+			result, err := client.ConnectLocalPlugin(resolvedProjectSlug, map[string]any{
+				"external_ref": installed.ExternalRef,
+				"name":         installed.Name,
+				"version":      installed.Manifest.Version,
+				"source_repo":  installed.Manifest.Repo,
+			})
+			if err != nil {
+				return fmt.Errorf("no encontré la conexión a Cloud de %q en el proyecto %q: %w", installed.Name, resolvedProjectSlug, err)
+			}
+			pluginMap, _ := result["plugin"].(map[string]any)
+			idFloat, _ := pluginMap["id"].(float64)
+
+			if err := client.DisconnectPlugin(resolvedProjectSlug, int(idFloat)); err != nil {
+				return err
+			}
+
+			installed.ConnectedProjectSlug = ""
+			if err := plugins.Save(installed); err != nil {
+				return err
+			}
+
+			if asJSON {
+				printJSON(map[string]any{"disconnected": installed.Name, "project": resolvedProjectSlug})
+				return nil
+			}
+			fmt.Printf("✓ %q desconectado del proyecto %q — libre para reconectarlo al mismo proyecto o a otro\n", installed.Name, resolvedProjectSlug)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud (opcional — por default el que ya tenía guardado en 'plugin connect')")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el resultado como JSON en vez de texto")
 	return cmd
 }

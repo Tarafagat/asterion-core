@@ -23,7 +23,7 @@ func cloudCmd() *cobra.Command {
 		Use:   "cloud",
 		Short: "Asterion Cloud: sesión, y vincular instancias locales a un proyecto",
 	}
-	root.AddCommand(cloudLoginCmd(), cloudLogoutCmd(), cloudConnectCmd(), cloudInstallAgentCmd(), cloudUninstallAgentCmd())
+	root.AddCommand(cloudLoginCmd(), cloudLogoutCmd(), cloudConnectCmd(), cloudDisconnectCmd(), cloudInstallAgentCmd(), cloudUninstallAgentCmd())
 	return root
 }
 
@@ -248,6 +248,57 @@ func cloudConnectCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud (opcional — si se omite, se elige interactivamente)")
+	return cmd
+}
+
+// cloudDisconnectCmd es lo que hace falta para poder reconectar una
+// instancia a OTRO proyecto: mientras siga conectada a uno,
+// connect_local_instance del backend rechaza con 409 cualquier intento de
+// conectarla a un proyecto distinto (chequeo real, no solo de nombre — ver
+// connectLocalInstance más arriba). --project es obligatorio a propósito,
+// mismo criterio que 'cloud uninstall-agent': localstore.Instance no
+// recuerda a qué proyecto está conectada (a diferencia de un plugin, ver
+// plugin_disconnect), así que hace falta decirlo para poder resolver su id
+// remoto antes de borrarlo del lado de Cloud.
+func cloudDisconnectCmd() *cobra.Command {
+	var projectSlug string
+	cmd := &cobra.Command{
+		Use:   "disconnect <nombre-local>",
+		Short: "Desconecta una instancia de su proyecto de Asterion Cloud (libre para reconectarla a otro)",
+		Long: "Borra la fila del lado de Cloud — no toca el perfil SSH local (para eso está\n" +
+			"'asterion instances remove'). Después de esto, 'asterion cloud connect' puede\n" +
+			"conectar la misma instancia al mismo proyecto de nuevo, o a uno distinto.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			instance, err := localstore.Get(args[0])
+			if err != nil {
+				return err
+			}
+
+			client, err := newAPIClient()
+			if err != nil {
+				return err
+			}
+
+			// connect-local es idempotente: si ya estaba conectada a
+			// --project, esto solo reusa la fila existente (sin duplicarla)
+			// para obtener su id remoto — es la única forma de saber qué
+			// borrar del lado de Cloud. Si en realidad está conectada a OTRO
+			// proyecto, esto mismo lo va a decir con el 409 de siempre.
+			remoteID, _, _, err := connectLocalInstance(projectSlug, instance)
+			if err != nil {
+				return fmt.Errorf("no encontré la conexión a Cloud de %q en el proyecto %q: %w", instance.Name, projectSlug, err)
+			}
+
+			if err := client.DeleteInstance(remoteID); err != nil {
+				return err
+			}
+			fmt.Printf("✓ %q desconectada del proyecto %q — libre para reconectarla al mismo proyecto o a otro\n", instance.Name, projectSlug)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud al que está conectada")
+	_ = cmd.MarkFlagRequired("project")
 	return cmd
 }
 

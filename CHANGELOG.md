@@ -9,6 +9,41 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
+- **`asterion cloud disconnect <nombre-local> --project <slug>`** y
+  **`asterion plugin disconnect <name> [--project <slug>]`** — lo que
+  hacía falta para poder reconectar una instancia o plugin a OTRO
+  proyecto de Asterion Cloud: mientras siga conectado a uno, el backend
+  ya rechazaba (409) cualquier intento de conectarlo a un proyecto
+  distinto (protección real, confirmada en vivo), pero no había forma
+  de soltarlo desde el CLI. `cloud disconnect` pide `--project` siempre
+  (`localstore.Instance` no recuerda a qué proyecto quedó conectada);
+  `plugin disconnect` lo pide solo si hace falta — por default usa el
+  que `plugin connect` ya guardó en `state.json`. Ninguno de los dos
+  toca nada local (perfil SSH / instalación del plugin) — solo el
+  registro del lado de Cloud, vía dos métodos nuevos en
+  `internal/apiclient` (`DeleteInstance`, `DisconnectPlugin`).
+  Verificado extremo a extremo contra un servidor real con `$HOME`
+  aislado (sin tocar sesión/config real): conectar a un proyecto,
+  confirmar que conectar a otro se rechaza, desconectar, confirmar que
+  ahora sí se puede conectar al otro — para instancia y para plugin.
+  De paso encontré y arreglé, del lado de `asterion-cloud`, un bug real
+  donde un plugin desconectado quedaba bloqueado para siempre en vez de
+  quedar libre para reconectarse (ver su CHANGELOG).
+- **`asterion plugin connect --all`** — conecta todos los plugins
+  instalados en esta máquina al mismo proyecto de Asterion Cloud (el
+  proyecto se resuelve una sola vez, interactivo o vía `--project`, y se
+  reusa para todos) en vez de correr `connect` una vez por plugin. Mismo
+  criterio que `plugin update --all`: un plugin que falla no corta el
+  resto, se reporta y se sigue. La lógica de conectar UN plugin se separó
+  a `connectOne`/`connectResult` (antes vivía inline en el `RunE` del
+  comando) para que el camino de a uno y el de `--all` compartan
+  exactamente el mismo código, sin dos implementaciones que puedan
+  desincronizarse. Verificado: `--help`, el rechazo de pasar nombre Y
+  `--all` juntos, y que sin sesión guardada falla igual de claro que el
+  camino de un solo plugin (mismo punto de falla, antes de cualquier
+  llamada real a la API) — la conexión real contra Cloud no se probó en
+  vivo en esta verificación porque requiere una sesión logueada de
+  verdad y crea un registro real en producción.
 - **`asterion --version`/`-v`** — imprime `asterion version vX.Y`. Un `go
   build` plano queda en `dev` (no hay forma de saber la versión real sin
   un paso explícito); `make build` (Makefile nuevo) compila el mismo
