@@ -9,6 +9,15 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Changed
+- **`asterion plugin from-ast` → `asterion plugin from-asterion`**,
+  siguiendo el rename de extensión en el repo hermano `asterion-language`
+  (`.ast` → `.asterion` — colisionaba con el significado de "Abstract
+  Syntax Tree"). `cmd/asterion/plugin_from_ast.go` renombrado a
+  `plugin_from_asterion.go`; `asterion language check` también actualiza
+  su string de uso a `<archivo.asterion>`. Verificado: `go build`/`go vet`
+  sin errores, y `plugin from-asterion` recompilando el manifiesto real
+  de `asterion-mail-plugin-basic` reproduce el `plugin.yaml` ya
+  commiteado sin cambios.
 - **`--project` pasa de ser un número a ser el slug del proyecto** (ej.
   `mi-proyecto-a3f9c1`), siguiendo el mismo cambio del lado de Asterion
   Cloud (ver su CHANGELOG: los proyectos dejaron de direccionarse por id
@@ -122,7 +131,7 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
   plugin y confirma que su API real coincide con lo declarado, sin llamar
   nunca operaciones destructivas), `asterion plugin from-openapi`
   (transforma una API REST propia en un `plugin.yaml` de partida),
-  `asterion plugin from-ast` (compila un manifiesto declarado explícito en
+  `asterion plugin from-asterion` (compila un manifiesto declarado explícito en
   Asterion Language — `Contract.define/config/resource/action/...` — a un
   `plugin.yaml`, y lo valida; alternativa sin heurística a `from-openapi`,
   implementada en el paquete `pluginmanifest` del repo hermano
@@ -277,7 +286,7 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
   instaló**, no el que hay ahora en disco — `state.json` guarda una foto
   de `plugin.yaml` tomada en `install`/`install --link`, y nada la
   refrescaba después. Un plugin que evolucionara su `plugin.yaml` (nuevos
-  `resources`/`actions`, típicamente vía `from-ast --force`) mostraba en
+  `resources`/`actions`, típicamente vía `from-asterion --force`) mostraba en
   el dashboard y en `plugin list` datos permanentemente desactualizados
   hasta reinstalarlo. `Start()` ahora relee el manifest desde
   `installed.Dir` antes de arrancar el proceso (si la lectura falla, sigue

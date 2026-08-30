@@ -32,7 +32,7 @@ func languageCmd() *cobra.Command {
 
 func languageCheckCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "check <archivo.ast>",
+		Use:   "check <archivo.asterion>",
 		Short: "Lexa + parsea + valida referencias y capabilities — nunca ejecuta ni planifica nada",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

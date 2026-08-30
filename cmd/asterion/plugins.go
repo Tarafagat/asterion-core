@@ -38,7 +38,7 @@ func pluginsCmd() *cobra.Command {
 		pluginValidateCmd(),
 		pluginDevCmd(),
 		pluginFromOpenAPICmd(),
-		pluginFromASTCmd(),
+		pluginFromAsterionCmd(),
 	)
 	return root
 }

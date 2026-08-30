@@ -517,19 +517,19 @@ asterion plugin init mi-plugin --language go      # scaffold: ya cumple el contr
 asterion plugin validate ./mi-plugin              # valida plugin.yaml + lo que referencia (openapi.yaml, schemas)
 asterion plugin dev ./mi-plugin                   # arranca el plugin y confirma que su API real coincide con lo declarado
 asterion plugin from-openapi mi-api.yaml          # infiere un plugin.yaml de partida a partir de una API REST propia
-asterion plugin from-ast mi-plugin.ast --out ./mi-plugin   # compila un manifiesto declarado explícito en Asterion Language, y lo valida
+asterion plugin from-asterion mi-plugin.asterion --out ./mi-plugin   # compila un manifiesto declarado explícito en Asterion Language, y lo valida
 ```
 
-`from-ast` es la alternativa sin heurística a `from-openapi`: en vez de
+`from-asterion` es la alternativa sin heurística a `from-openapi`: en vez de
 inferir `resources`/`actions` adivinando por la forma de una URL (y a
 veces adivinando mal — un endpoint de un segmento como `/enviar` sale
 como "resource" en vez de "action"), el autor declara cada campo del
 contrato explícito con llamadas `Contract.define(...)`,
-`Contract.config(...)`, `Contract.resource(...)`, etc. en un `.ast` — el
+`Contract.config(...)`, `Contract.resource(...)`, etc. en un `.asterion` — el
 mismo lenguaje de `asterion language check`, pero un DSL separado (no
 pasa por su analyzer de infraestructura). Ver
 `asterion-language/spec/grammar.md` § "DSL de manifiesto de plugin" por la
-gramática completa, y `asterion-language/examples/plugin-manifest.ast`
+gramática completa, y `asterion-language/examples/plugin-manifest.asterion`
 por un ejemplo real y completo.
 
 **Plugins privados sin repo, con `--link`**: `asterion plugin install <carpeta>
@@ -1043,7 +1043,7 @@ una secuencia de comandos. Vive en el repo hermano
 `asterion-plugin-contract`).
 
 ```bash
-asterion language check main.ast   # lexer + parser + semantic — nunca toca infraestructura
+asterion language check main.asterion   # lexer + parser + semantic — nunca toca infraestructura
 ```
 
 **Solo `check` existe hoy.** `plan`/`apply` no están implementados a

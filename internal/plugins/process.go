@@ -117,7 +117,7 @@ func Start(name string) (Installed, error) {
 
 	// Releer el manifest desde disco antes de arrancar: 'start' es un punto
 	// natural para resincronizar contra ediciones hechas directo al
-	// plugin.yaml (ej. 'asterion plugin from-ast --force', o un --link
+	// plugin.yaml (ej. 'asterion plugin from-asterion --force', o un --link
 	// donde el autor sigue editando su propia carpeta) sin tener que
 	// reinstalar. El manifest guardado en state.json es una foto de cuando
 	// se instaló — sin este refresh, quedaría permanentemente desactualizado
