@@ -620,6 +620,14 @@ func pluginDisconnectCmd() *cobra.Command {
 				return fmt.Errorf("no sé a qué proyecto está conectado %q — pasá --project", installed.Name)
 			}
 
+			cfg, email, err := requireSessionEmail()
+			if err != nil {
+				return err
+			}
+			if err := confirmByEmailCode(cfg, email, fmt.Sprintf("desconectar %q del proyecto %q", installed.Name, resolvedProjectSlug)); err != nil {
+				return err
+			}
+
 			client, err := newAPIClient()
 			if err != nil {
 				return err

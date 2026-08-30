@@ -84,6 +84,51 @@ func cloudLoginCmd() *cobra.Command {
 	return cmd
 }
 
+// confirmByEmailCode exige, antes de una acción que se pidió que no se
+// pueda disparar con solo apretar el comando (hoy: desconectar una
+// instancia o un plugin de Cloud), el mismo código de un solo uso por
+// email que ya usa 'cloud login' — reusado tal cual
+// (RequestLoginCode/VerifyLoginCode), sin ningún endpoint nuevo del
+// backend. La sesión que devuelve VerifyLoginCode se descarta a
+// propósito: ya hay una activa y vigente (la que hizo posible llegar
+// hasta acá), no hace falta reemplazarla — lo único que importa es que
+// falle si el código está mal, confirmando que quien está corriendo esto
+// tiene acceso de VERDAD al correo de la cuenta ahora mismo, no solo una
+// sesión de CLI que quedó abierta en esta máquina.
+func confirmByEmailCode(cfg cliconfig.Config, email, action string) error {
+	client := apiclient.NewUnauthenticated(cfg.APIBaseURL)
+	if err := client.RequestLoginCode(email); err != nil {
+		return fmt.Errorf("no pude pedir el código de verificación: %w", err)
+	}
+	fmt.Printf("Para confirmar %s, te mandamos un código a %s.\n", action, email)
+	fmt.Print("Código: ")
+	code := trimNewline(readLine())
+	if code == "" {
+		return fmt.Errorf("no se ingresó ningún código — no se hizo nada")
+	}
+	if _, err := client.VerifyLoginCode(email, code); err != nil {
+		return fmt.Errorf("verificación fallida, no se hizo nada: %w", err)
+	}
+	return nil
+}
+
+// requireSessionEmail devuelve el email de la sesión activa (la que ya
+// hizo falta para llegar hasta este comando) — es a esa dirección a la
+// que se manda el código de confirmDisconnectByEmail, nunca una que se
+// tipee en el momento: si alguien más tiene una sesión de CLI abierta en
+// esta máquina, el código igual va al dueño real de la cuenta.
+func requireSessionEmail() (cliconfig.Config, string, error) {
+	cfg, err := cliconfig.Load()
+	if err != nil {
+		return cfg, "", err
+	}
+	creds, err := cliconfig.LoadCredentials()
+	if err != nil || creds.Email == "" {
+		return cfg, "", fmt.Errorf("no hay sesión guardada, corré 'asterion cloud login' primero")
+	}
+	return cfg, creds.Email, nil
+}
+
 func cloudLogoutCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout",
@@ -272,6 +317,14 @@ func cloudDisconnectCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			instance, err := localstore.Get(args[0])
 			if err != nil {
+				return err
+			}
+
+			cfg, email, err := requireSessionEmail()
+			if err != nil {
+				return err
+			}
+			if err := confirmByEmailCode(cfg, email, fmt.Sprintf("desconectar %q del proyecto %q", instance.Name, projectSlug)); err != nil {
 				return err
 			}
 

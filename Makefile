@@ -24,12 +24,18 @@ endif
 version:
 	@echo $(if $(VERSION),$(VERSION),dev)
 
-# Recompila e instala en $GOPATH/bin (mismo lugar que 'go install' de
-# siempre) — para actualizar el binario real que corrés desde cualquier
-# lado sin tener que copiarlo a mano. Único paso que hace falta después
-# de cualquier cambio a este repo: Go no tiene "hot reload" para un CLI,
-# el binario instalado queda con el código de la última vez que se
-# instaló hasta que se vuelve a correr esto.
+# Recompila e instala en DOS lugares: $GOPATH/bin (vía 'go install', sin
+# sudo) y /usr/local/bin (copiado, con sudo si hace falta) — a propósito
+# los dos, no uno solo: /usr/local/bin ya está en el $PATH de cualquier
+# shell sin que nadie tenga que configurar nada (bug real encontrado en
+# vivo: un binario viejo suelto ahí, de antes de usar 'go install', le
+# ganaba en el $PATH al nuevo de $GOPATH/bin sin ningún error — server
+# quedaba corriendo comandos viejos en silencio). Manteniendo los dos
+# lugares siempre idénticos, no importa cuál resuelva tu $PATH primero.
+# Único paso que hace falta después de cualquier cambio a este repo: Go
+# no tiene "hot reload" para un CLI, el binario instalado queda con el
+# código de la última vez que se instaló hasta que se vuelve a correr
+# esto.
 .PHONY: install
 install:
 ifeq ($(VERSION),)
@@ -39,11 +45,23 @@ else
 endif
 	@installed="$$(go env GOPATH)/bin/$(BINARY)"; \
 	echo "✓ instalado en $$installed"; \
+	if [ -w /usr/local/bin ]; then \
+		cp "$$installed" /usr/local/bin/$(BINARY) && copied=1 || copied=0; \
+	else \
+		sudo cp "$$installed" /usr/local/bin/$(BINARY) && copied=1 || copied=0; \
+	fi; \
+	if [ "$$copied" = "1" ]; then \
+		echo "✓ copiado a /usr/local/bin/$(BINARY) (ya está en el \$$PATH de cualquier shell, sin configurar nada)"; \
+		echo "  Si tu shell actual venía arrastrando otro 'asterion' de antes, corré 'hash -r' (bash/zsh)"; \
+		echo "  para que olvide la ruta vieja — o abrí una terminal nueva."; \
+	else \
+		echo "⚠ NO se pudo copiar a /usr/local/bin/$(BINARY) (sudo necesita una terminal interactiva"; \
+		echo "  para la contraseña, y este Makefile no la tiene acá) — corré esto a mano:"; \
+		echo "    sudo cp $$installed /usr/local/bin/$(BINARY)"; \
+	fi; \
 	resolved="$$(command -v $(BINARY) 2>/dev/null)"; \
-	if [ -n "$$resolved" ] && [ "$$resolved" != "$$installed" ]; then \
+	if [ -n "$$resolved" ] && [ "$$resolved" != "$$installed" ] && [ "$$resolved" != "/usr/local/bin/$(BINARY)" ]; then \
 		echo ""; \
-		echo "⚠ '$(BINARY)' en tu \$$PATH resuelve a $$resolved, NO al que se acaba de instalar."; \
-		echo "  Vas a seguir corriendo el binario viejo hasta que resuelvas esto:"; \
-		echo "    sudo rm $$resolved          # si es un binario suelto de una instalación vieja"; \
-		echo "  o anteponé $$(go env GOPATH)/bin a tu \$$PATH."; \
+		echo "⚠ Además, '$(BINARY)' en tu \$$PATH resuelve a $$resolved — un TERCER binario,"; \
+		echo "  distinto de los dos que se acaban de actualizar. Revisá qué es esa ruta."; \
 	fi

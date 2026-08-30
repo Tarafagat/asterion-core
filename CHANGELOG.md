@@ -9,18 +9,59 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
-- **`make install` avisa si `asterion` en tu `$PATH` no resuelve al
-  binario que se acaba de instalar.** Encontrado en vivo: en una
-  instancia con un `asterion` viejo suelto en `/usr/local/bin` (de
-  antes de usar `go install`), `git pull` + `go install ./cmd/asterion`
-  compilaban bien el binario nuevo en `$GOPATH/bin`, pero como
-  `/usr/local/bin` está antes en el `$PATH`, seguía corriendo el viejo
-  sin ningún error — silencioso y confuso. Ahora `make install` compara
-  `command -v asterion` contra la ruta que acaba de instalar y, si
-  difieren, avisa cuál es el binario que realmente se está corriendo y
-  cómo sacarlo del medio. Verificado con un binario señuelo puesto a
-  propósito antes en el `$PATH`: dispara el aviso correcto; sin
-  señuelo, no dice nada de más.
+- **`cloud disconnect` y `plugin disconnect` ahora piden confirmación por
+  código de un solo uso, mandado al email de la sesión activa** — a
+  pedido explícito del usuario: "que nadie pueda apretar directamente
+  desconectar". Reusa tal cual el mismo mecanismo de `cloud login`
+  (`RequestLoginCode`/`VerifyLoginCode`, mismo SMTP de la plataforma) en
+  vez de inventar uno nuevo — la sesión que devuelve `VerifyLoginCode` se
+  descarta a propósito (ya hay una vigente), lo único que importa es que
+  falle si el código está mal. El email va siempre a la dirección de la
+  sesión guardada (`cliconfig.Credentials.Email`), nunca a una que se
+  tipee en el momento — así una sesión de CLI abierta en una máquina
+  compartida no alcanza sola para desconectar nada, hace falta además
+  poder leer ese correo. Nuevos helpers compartidos en `cloud.go`
+  (`confirmByEmailCode`, `requireSessionEmail`), usados por los dos
+  comandos. Verificado extremo a extremo contra un servidor real (con
+  Firebase mockeado — `create_custom_token`/`exchange_custom_token_for_session`
+  pegan contra Firebase de verdad y no hacen falta para esto — y el
+  código fijado a un valor conocido en vez de al azar, para poder
+  probarlo sin leer un email real): código incorrecto → 400 desde el
+  backend, el CLI aborta con "no se hizo nada", y confirmado en la base
+  que la instancia/plugin sigue conectado; código vacío → aborta antes
+  de llamar a nada; código correcto → desconecta de verdad, confirmado
+  en la base.
+- **`make install` ahora instala en DOS lugares: `$GOPATH/bin` (vía `go
+  install`) Y `/usr/local/bin` (copiado, con `sudo` si hace falta).**
+  Encontrado en vivo, en dos vueltas: primero, en una instancia con un
+  `asterion` viejo suelto en `/usr/local/bin` (de antes de usar `go
+  install`), `git pull` + `go install ./cmd/asterion` compilaban bien
+  el binario nuevo en `$GOPATH/bin`, pero como `/usr/local/bin` está
+  antes en el `$PATH`, seguía corriendo el viejo sin ningún error —
+  silencioso y confuso (primer intento de arreglo: solo avisar de la
+  discrepancia). Segunda vuelta, ya sacado el binario viejo de en
+  medio: bash tenía la ruta vieja *cacheada* (`hash`), así que
+  `-bash: /usr/local/bin/asterion: No such file or directory` incluso
+  con `/usr/local/bin/asterion` ya borrado — más confuso todavía.
+  Solución real: en vez de pelear con cuál gana en el `$PATH` o con el
+  caché de la shell, mantener los DOS lugares siempre con el mismo
+  binario — no importa cuál resuelva primero. `/usr/local/bin` ya está
+  en el `$PATH` de cualquier shell sin configurar nada, así que
+  cubre el caso común de entrada. Sigue avisando si aparece un
+  *tercer* binario en el medio que no sea ninguno de los dos.
+  **Bug real encontrado en la propia verificación de este cambio**: la
+  primera versión hacía `cp`/`sudo cp` sin chequear si había
+  funcionado — con `sudo` fallando por falta de terminal interactiva
+  para la contraseña (exactamente lo que pasa corriendo esto sin una
+  sesión interactiva de verdad), el script igual imprimía "✓ copiado a
+  /usr/local/bin" — un falso éxito. Corregido: ahora se chequea el
+  código de salida del `cp`/`sudo cp` y, si falló, se avisa
+  explícitamente con el comando exacto para correr a mano en vez de
+  mentir que ya quedó listo. Verificado: la rama de éxito contra un
+  directorio de prueba escribible (sin poder probar el `sudo` real sin
+  la contraseña del usuario, es la única diferencia con ese camino), y
+  la rama de error confirmada en vivo — un `sudo` real fallando por
+  falta de terminal ahora sí se reporta como lo que es.
 - **`asterion cloud disconnect <nombre-local> --project <slug>`** y
   **`asterion plugin disconnect <name> [--project <slug>]`** — lo que
   hacía falta para poder reconectar una instancia o plugin a OTRO
