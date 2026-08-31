@@ -9,6 +9,50 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Fixed
+- **`asterion plugin build` fallaba en una instancia recién clonada —
+  mismo problema que el de `make install` de acá abajo, un nivel más
+  adentro.** Reporte en vivo del usuario, en el mismo `fuelity-bot`:
+  después de arreglar `make install`, instaló un plugin oficial
+  (`asterion plugin install .../asterion-firewall-analysis`) y
+  `asterion plugin build asterion-firewall-analysis` falló con
+  `replacement directory ../asterion-plugin-contract does not exist`.
+  Causa real: el propio `go.mod` de CADA plugin en Go declara `replace
+  .../asterion-plugin-contract => ../asterion-plugin-contract` (por
+  implementar justamente ese contrato) — pero esa carpeta hermana nunca
+  se clonaba en `~/.config/asterion/plugins/repos/`, a diferencia de
+  los repos hermanos de `asterion-core` mismo, que `asterion install
+  prerequirements` ya resuelve (ver más abajo). Pedido explícito del
+  usuario: una sola copia compartida en esa carpeta (no una por
+  plugin — todos los plugins viven directamente bajo
+  `plugins/repos/`, así que `../` desde cualquiera de ellos ya apunta
+  ahí), clonada sola al instalar/compilar un plugin, y actualizada
+  junto con el resto al correr `plugin update --all`.
+  - `internal/plugins/contract.go` (nuevo): `EnsureContractRepo`
+    (clona `asterion-plugin-contract` en `plugins/repos/` si falta, o
+    la repara si quedó con un `.git` roto de un clone interrumpido —
+    mismo chequeo `git rev-parse HEAD` que ya usa `internal/prereqs`,
+    no un simple `.git`) y `UpdateContractRepo` (`git pull --ff-only`,
+    solo si ya existe).
+  - `internal/plugins.Build` ahora llama `EnsureContractRepo` antes de
+    `go build` — es el punto donde de verdad hace falta (sin la
+    carpeta, ni siquiera compila), así que ahí el fallo es un error
+    real y claro, no silencioso.
+  - `asterion plugin install` también la deja lista de una, mejor
+    esfuerzo (si falla acá por lo que sea, no corta un install que ya
+    terminó bien — `plugin build` la va a reintentar solo después).
+  - `internal/plugins.UpdateAll` (`plugin update --all`) ahora suma
+    una fila más al resultado por la copia compartida, si ya está
+    clonada — mismo formato que cualquier otro repo.
+  - Verificado en vivo, con los repos públicos reales (`HOME`
+    aislado para no tocar los plugins ya instalados en esta máquina):
+    `plugin install` de `asterion-firewall-analysis` deja
+    `asterion-plugin-contract` clonada al lado sola; `plugin build`
+    sobre ese mismo plugin ahora compila de punta a punta (binario Go
+    + su frontend); una segunda corrida es idempotente (no re-clona
+    nada); `plugin update --all` muestra `asterion-plugin-contract`
+    como fila propia junto al plugin.
+
+### Fixed
 - **`make install`/`make build` fallaban en una instancia recién clonada
   — ni siquiera compilaban `asterion`.** Reporte en vivo del usuario,
   probando exactamente el escenario para el que se pensó `asterion

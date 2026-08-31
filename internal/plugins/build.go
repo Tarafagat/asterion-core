@@ -40,6 +40,16 @@ func Build(name string) (string, error) {
 
 	var log strings.Builder
 
+	// Todo plugin Go real referencia asterion-plugin-contract con
+	// 'replace ../asterion-plugin-contract' en su propio go.mod (por ser
+	// justamente un plugin que implementa ese contrato) — sin la copia
+	// compartida al lado (ver EnsureContractRepo), 'go build' falla acá
+	// mismo con "replacement directory ../asterion-plugin-contract does
+	// not exist", visto en vivo en una instancia recién clonada.
+	if err := EnsureContractRepo(); err != nil {
+		return "", fmt.Errorf("no pude preparar asterion-plugin-contract (lo necesita este plugin para compilar): %w", err)
+	}
+
 	goBuild := exec.Command("go", "build", "-o", outputName, ".")
 	goBuild.Dir = installed.Dir
 	out, err := goBuild.CombinedOutput()

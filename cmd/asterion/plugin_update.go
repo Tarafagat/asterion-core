@@ -29,7 +29,11 @@ func pluginUpdateCmd() *cobra.Command {
 			"son un clone que Asterion administre, y ni siquiera necesitan ser un repo git.\n\n" +
 			"Actualizar el código no reinicia el plugin ni lo recompila solo: para un plugin en Go,\n" +
 			"'asterion plugin build <name>' después de esto, y parar/arrancar de nuevo el proceso\n" +
-			"para que tome el cambio.",
+			"para que tome el cambio.\n\n" +
+			"Con --all, además actualiza (si ya está clonada) la copia compartida de\n" +
+			"asterion-plugin-contract que todo plugin en Go necesita para compilar — aparece como\n" +
+			"una fila más en el resultado, 'asterion-plugin-contract'. Con un nombre puntual, no: no\n" +
+			"tiene sentido tocar una dependencia compartida por actualizar un solo plugin.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := ""

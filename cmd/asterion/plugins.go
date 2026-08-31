@@ -125,16 +125,34 @@ func pluginInstallCmd() *cobra.Command {
 			"ningún repo, ni siquiera tener uno local. Los cambios que hagas en el código se ven\n" +
 			"la próxima vez que lo arranques (compilalo vos, Asterion nunca compila nada). Por\n" +
 			"seguridad, 'asterion plugin remove' de un plugin --link NUNCA borra la carpeta —\n" +
-			"solo lo desregistra.",
+			"solo lo desregistra.\n\n" +
+			"De paso deja lista ~/.config/asterion/plugins/repos/asterion-plugin-contract (clonada\n" +
+			"si hace falta) — todo plugin en Go la necesita para compilar, sea instalado con --link\n" +
+			"o no. Si eso falla acá (sin red en este momento puntual, por ejemplo), no corta el\n" +
+			"install: 'asterion plugin build' lo reintenta solo.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			installed, err := plugins.Install(args[0], name, link)
 			if err != nil {
 				return err
 			}
+
+			// Mejor esfuerzo, no bloqueante: sin esto, 'asterion plugin
+			// build' de este mismo plugin fallaría después con
+			// "replacement directory ../asterion-plugin-contract does
+			// not exist" — dejarlo preparado ahora evita ese viaje en
+			// falso. Si falla acá (sin red en este momento puntual, por
+			// ejemplo), 'plugin build' lo va a reintentar solo más
+			// tarde (ver internal/plugins.Build) — no vale la pena
+			// hacer fallar un 'install' que ya terminó bien por esto.
+			contractErr := plugins.EnsureContractRepo()
+
 			if asJSON {
 				printJSON(installed)
 				return nil
+			}
+			if contractErr != nil {
+				fmt.Printf("⚠ No pude preparar asterion-plugin-contract de una (%s) — 'asterion plugin build %s' lo va a reintentar.\n", contractErr, installed.Name)
 			}
 			verb := "instalado"
 			if link {
@@ -285,7 +303,11 @@ func pluginBuildCmd() *cobra.Command {
 			"cuenta, ni siquiera para compilarlo — este comando es ese pedido puntual del operador, no algo\n" +
 			"que 'install'/'start' disparen solos. Hoy solo sabe compilar plugins con language.name=\"go\"\n" +
 			"en su plugin.yaml (los dos oficiales, asterion-mail-plugin-basic y asterion-firewall-analysis,\n" +
-			"lo son) — si tiene frontend/package.json, también corre 'pnpm install && pnpm build' ahí.",
+			"lo son) — si tiene frontend/package.json, también corre 'pnpm install && pnpm build' ahí.\n\n" +
+			"Antes de compilar, se asegura de que ~/.config/asterion/plugins/repos/asterion-plugin-contract\n" +
+			"esté clonada (o la repara si un clone anterior quedó a medias) — todo plugin en Go la\n" +
+			"referencia con 'replace ../asterion-plugin-contract' en su propio go.mod, así que sin\n" +
+			"ella el build falla ahí mismo.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Compilando %q...\n", args[0])

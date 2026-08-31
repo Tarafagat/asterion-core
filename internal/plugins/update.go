@@ -37,14 +37,27 @@ func Update(name string) UpdateResult {
 // commitear, no tiene git) no corta el resto: cada fila de UpdateResult es
 // independiente, mismo criterio que ya usa el resto de este paquete de no
 // dejar una operación de a uno rota por otra que no tiene nada que ver.
+//
+// También actualiza (git pull) la copia compartida de
+// asterion-plugin-contract si ya está clonada — pedido explícito del
+// usuario: "al actualizar también debe actualizarse estando ahí". Se
+// agrega como una fila más al final, mismo formato que cualquier otro
+// repo — no se clona acá si todavía no existe (para eso, EnsureContractRepo,
+// que corre solo 'asterion plugin install'/'build').
 func UpdateAll() ([]UpdateResult, error) {
 	list, err := List()
 	if err != nil {
 		return nil, err
 	}
-	results := make([]UpdateResult, 0, len(list))
+	results := make([]UpdateResult, 0, len(list)+1)
 	for _, installed := range list {
 		results = append(results, updateOne(installed))
+	}
+	switch contractResult, present, ctErr := UpdateContractRepo(); {
+	case ctErr != nil:
+		results = append(results, UpdateResult{Name: contractDirName, Error: ctErr.Error()})
+	case present:
+		results = append(results, contractResult)
 	}
 	return results, nil
 }
