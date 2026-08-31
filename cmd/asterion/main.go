@@ -58,6 +58,7 @@ func main() {
 		imagesCmd(),
 		pluginsCmd(),
 		languageCmd(),
+		installCmd(),
 		upgradeCmd(),
 	)
 	if err := rootCmd.Execute(); err != nil {

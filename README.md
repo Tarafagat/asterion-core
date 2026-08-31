@@ -320,10 +320,24 @@ listo. La alternativa manual, sin el `Makefile`, sigue siendo
 `go install ./cmd/asterion` (deja `asterion --version` en `dev`, sin el
 número de versión, y no toca `/usr/local/bin`).
 
-Con ese workspace armado (este repo más los hermanos que necesites —
-`asterion-lab`, `asterion-plugin-contract`, `asterion-language` — como
-carpetas al lado), `asterion upgrade` los mantiene al día sin tener que
-entrar a cada uno a mano:
+Para compilar con todos sus módulos hacen falta, al lado de este repo, los
+hermanos que declara como `replace ../X` en `go.mod` — `asterion-lab`,
+`asterion-plugin-contract`, `asterion-language` — más `asterion-shared`
+(dependencia editable de Python para `backend-core`, ver más abajo). Ya
+con `asterion` compilado e instalado (los pasos de arriba), un solo
+comando los clona a todos, saltando los que ya estén:
+
+```bash
+asterion install prerequirements
+# ✓ asterion-lab — clonado
+# ✓ asterion-language — clonado
+# ✓ asterion-plugin-contract — clonado
+# ✓ asterion-shared — clonado
+```
+
+Correrlo de nuevo es seguro (repo ya clonado = se deja tal cual). De ahí en
+más, `asterion upgrade` los mantiene al día sin tener que entrar a cada
+uno a mano:
 
 ```bash
 asterion upgrade --list          # ver qué repos encontraría, sin tocar nada
@@ -331,8 +345,9 @@ asterion upgrade                 # git pull --ff-only en todos los que encuentre
 asterion upgrade asterion-lab    # o solo uno puntual
 ```
 
-No tiene nada que ver con los plugins de terceros instalados (sección
-más abajo) — es exclusivamente el propio código fuente del ecosistema.
+Ninguno de los dos tiene que ver con los plugins de terceros instalados
+(sección más abajo) — son exclusivamente el propio código fuente del
+ecosistema.
 
 ## Levantar asterion-core
 

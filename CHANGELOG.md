@@ -8,6 +8,50 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 
 ## [Unreleased]
 
+### Added
+- **`asterion install prerequirements`, comando nuevo para clonar de una
+  los repos hermanos que hacen falta.** Hasta ahora, armar el workspace de
+  desarrollo (este repo más `asterion-lab`, `asterion-language`,
+  `asterion-plugin-contract` — los tres referenciados con `replace ../X`
+  en `go.mod` — y `asterion-shared`, dependencia editable de Python para
+  `backend-core`) era 100% manual: tanto este README (`## Compilar`) como
+  los docs públicos de asterion-cloud daban por sentado que esos 4 repos
+  "ya estaban" clonados al lado, y solo `asterion upgrade` (que únicamente
+  actualiza lo que ya existe en disco, `internal/upgrade`, sin lista fija
+  a propósito) cubría el paso siguiente. Pedido del usuario: un comando
+  que los clone al instante, sin fallar si se lo corre de nuevo.
+  - Paquete nuevo `internal/prereqs`, deliberadamente separado de
+    `internal/upgrade` (que declara explícito en su propio comentario que
+    no tiene lista fija) — acá sí hace falta una, para saber de dónde
+    clonar algo que todavía no existe. Catálogo fijo de 4 repos, todos
+    públicos en GitHub. Quedan afuera a propósito los plugins oficiales
+    (`asterion-mail-plugin-basic`, `asterion-firewall-analysis` — ya
+    tienen su propio flujo completo vía `asterion plugin install <url>`)
+    y el repo `asterion` en sí (solo documentación/versiones).
+  - Clone shallow (`--depth 1`, mismo criterio que `internal/plugins.
+    Install`) — rápido, y `git pull --ff-only` (lo que usa `upgrade`
+    después) funciona igual sobre un clone shallow.
+  - Idempotente de verdad, no solo "no falla": un repo ya clonado se
+    detecta con `git rev-parse HEAD` (no un simple `os.Stat(.git)`) —
+    si HEAD no resuelve (un clone que se cortó a mitad de camino, antes
+    de que `git` termine de escribir las refs), se borra y se reclona en
+    vez de quedar reportando "ya estaba" para siempre sobre un repo que
+    en realidad nunca terminó de bajar.
+  - Verificado en vivo contra GitHub real (los 4 repos son públicos): un
+    workspace vacío con solo `asterion-core` clona los 4 hermanos en
+    ~5.5s; correr el comando de nuevo sobre el mismo workspace da 4x "ya
+    estaba" sin re-clonar nada; un clone interrumpido a propósito (`git
+    clone` matado a mitad de la transferencia, dejando `.git/HEAD`
+    apuntando a una rama que nunca se llegó a crear — el estado real que
+    deja una interrupción, confirmado a mano) se detecta como no usable,
+    se borra y se re-clona correctamente; y correrlo sobre el workspace
+    real de desarrollo (con los 4 hermanos ya presentes) da 4x "ya
+    estaba" sin tocar nada, confirmado con `git status --short` antes y
+    después.
+  - `README.md` (`## Compilar`) y los docs públicos de asterion-cloud
+    (`CliReference.tsx`, `LabReference.tsx`) actualizados para mostrar
+    este comando en vez de asumir el clonado manual.
+
 ### Changed
 - **`README.md` puesto al día con todo lo de esta sesión** — el usuario
   pidió actualizar la documentación después de agregar `agent status`
