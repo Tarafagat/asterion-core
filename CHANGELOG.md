@@ -8,6 +8,37 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 
 ## [Unreleased]
 
+### Added
+- **`asterion agent restart [nombre-local]`, comando nuevo.** Pregunta
+  del usuario, siguiendo el arreglo de specs reales de acá abajo: "¿cuál
+  es el comando para reiniciar el agente cuando se actualice?" — no
+  había ninguno. Reconectar vía `cloud install-agent` funciona pero es
+  mucho más de lo necesario (rehace todo el handshake con Cloud) solo
+  para que el servicio ya instalado tome un binario recién recompilado
+  — Go no tiene hot-reload, el proceso corriendo sigue siendo el
+  binario de la última vez que arrancó hasta que se lo reinicia.
+  - Mismo criterio de resolución que `agent status` (reusa
+    `resolveSelfInstance`): sin argumento, identifica sola la instancia
+    que representa esta máquina (`Host=localhost`); con un nombre,
+    cualquier otra del inventario local.
+  - No toca nada del lado de Cloud — reusa tal cual
+    `installAgentService`, la misma función que ya usa `cloud
+    install-agent` para instalar el servicio la primera vez (mismo
+    beneficio del fix de reinicio de acá abajo, gratis).
+  - Guarda de más: si la instancia nunca tuvo una clave de agente
+    guardada (nunca se conectó), error claro pidiendo `cloud
+    install-agent` primero, en vez de dejar instalado un servicio que
+    va a crashear en loop cada `RestartSec=10` porque `agent-run` no
+    tiene con qué autenticarse.
+  - Verificado: resolución sin argumento (error claro si no hay
+    ninguna instancia local o si hay más de una ambigua, mismo mensaje
+    que ya prueba `agent status`), nombre explícito inexistente, y el
+    guard de "sin clave todavía" — los tres casos de error dan el
+    mensaje esperado. La mecánica real de reinicio de systemd/launchd
+    no se pudo probar en vivo en esta Mac (no hay forma segura de
+    probar systemd acá), pero reusa el mismo `installAgentService` ya
+    corregido y probado por compilación en el fix de acá abajo.
+
 ### Fixed
 - **`asterion cloud connect`/`install-agent` mandaban siempre 1 CPU / 1GB
   RAM / 10GB disco / "linux" a Asterion Cloud, sin importar el hardware
@@ -31,6 +62,26 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
     falla (hoy, solo en un SO no soportado — Windows, ver el comentario
     de `internal/sysinfo`), cae a los valores fijos de antes pero
     avisando por stderr, en vez de fallar en silencio.
+  - **Una instancia YA conectada no se corrige sola con este cambio**:
+    revisado el backend (`connect_local_instance`,
+    `routers/instances.py`), si `external_ref` ya existe devuelve la
+    fila existente TAL CUAL — ignora cualquier `cpu_cores`/`ram_gb`
+    nuevo que mande un `connect`/`install-agent` posterior. Hace falta
+    `asterion cloud disconnect <nombre-local> --project <slug>` (borra
+    la fila del lado de Cloud de verdad, `DELETE FROM instances` — a
+    diferencia de `uninstall-agent`, que solo revoca credenciales y deja
+    la fila) antes de volver a conectar para que se re-cree con los
+    datos reales.
+  - De paso, un bug relacionado en `installAgentService` (Linux/
+    systemd): reconectar con el servicio del agente ya corriendo
+    dejaba, en la práctica, un proceso viejo corriendo con la clave
+    vieja — `loadAgentKey` se lee UNA sola vez al arrancar `agent-run`
+    (ver `agentRunCmd`), y `systemctl --user enable --now` sobre un
+    unit ya activo es un no-op, no lo reinicia. Cambiado a `enable` +
+    `restart` (`restart` arranca si no estaba corriendo, y reinicia si
+    ya estaba) — mismo resultado que ya lograba
+    `installAgentServiceDarwin` en macOS con su `unload`+`load`
+    incondicional, que no tenía este problema.
   - El heartbeat/métricas del agent (`agent-run`) tampoco arreglan esto
     después: revisado a fondo, ni `POST /agent/heartbeat` ni `POST
     /agent/usage-metrics` tienen forma de cargar `cpu_cores`/RAM total

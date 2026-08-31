@@ -28,7 +28,7 @@ func agentCmd() *cobra.Command {
 		Use:   "agent",
 		Short: "Estado local del agente instalado (systemd, clave guardada)",
 	}
-	root.AddCommand(agentStatusCmd())
+	root.AddCommand(agentStatusCmd(), agentRestartCmd())
 	return root
 }
 
@@ -83,6 +83,58 @@ func agentStatusCmd() *cobra.Command {
 				"service_name":   serviceName,
 				"service_status": serviceState,
 			})
+			return nil
+		},
+	}
+}
+
+// agentRestartCmd reinicia el proceso local del agente (systemd --user en
+// Linux, launchd en macOS) SIN tocar nada del lado de Cloud — a diferencia
+// de 'cloud install-agent'/'cloud disconnect'+'connect', que sirven para
+// (re)vincular la instancia, esto es solo "el binario cambió, hacé que el
+// servicio ya instalado corra la versión nueva". Reusa installAgentService
+// tal cual (mismo código que ya usa 'cloud install-agent' para instalar el
+// servicio la primera vez) — sigue siendo idempotente, reescribe el mismo
+// unit/plist con el mismo contenido, y ahora sí garantiza el reinicio
+// aunque ya estuviera corriendo (ver el comentario dentro de
+// installAgentService sobre por qué 'restart' y no 'start').
+func agentRestartCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "restart [nombre-local]",
+		Short: "Reinicia el servicio local del agente para que tome un binario recién actualizado",
+		Long: "Sin argumento, identifica sola la instancia que representa A ESTA MÁQUINA (mismo\n" +
+			"criterio que 'agent status' — ver ahí). No habla con Asterion Cloud ni cambia nada\n" +
+			"de la conexión — el servicio instalado sigue corriendo el código de la última vez\n" +
+			"que arrancó, Go no tiene hot-reload para un binario ya en ejecución: hace falta esto\n" +
+			"después de 'asterion upgrade'/recompilar para que el agente use el binario nuevo.",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var instance localstore.Instance
+			var err error
+			if len(args) == 1 {
+				instance, err = localstore.Get(args[0])
+			} else {
+				instance, err = resolveSelfInstance()
+			}
+			if err != nil {
+				return err
+			}
+
+			keys, err := loadAgentKeys()
+			if err != nil {
+				return err
+			}
+			if _, hasKey := keys[instance.ID]; !hasKey {
+				return fmt.Errorf(
+					"%q no tiene una clave de agente guardada todavía — instalalo primero con 'asterion cloud install-agent'",
+					instance.Name,
+				)
+			}
+
+			if err := installAgentService(instance.ID); err != nil {
+				return err
+			}
+			fmt.Printf("✓ Agente de %q reiniciado con el binario actual\n", instance.Name)
 			return nil
 		},
 	}
@@ -262,8 +314,21 @@ WantedBy=default.target
 	if out, err := exec.Command("systemctl", "--user", "daemon-reload").CombinedOutput(); err != nil {
 		return fmt.Errorf("daemon-reload: %w (%s)", err, out)
 	}
-	if out, err := exec.Command("systemctl", "--user", "enable", "--now", serviceName).CombinedOutput(); err != nil {
-		return fmt.Errorf("enable --now: %w (%s)", err, out)
+	if out, err := exec.Command("systemctl", "--user", "enable", serviceName).CombinedOutput(); err != nil {
+		return fmt.Errorf("enable: %w (%s)", err, out)
+	}
+	// 'restart', no 'start'/'enable --now': si el servicio ya estaba
+	// corriendo (reinstalación después de reconectar, por ejemplo), un
+	// 'start' sobre un unit ya activo es un no-op — el proceso viejo
+	// seguiría corriendo con la clave del agente que tenía cargada en
+	// memoria desde que arrancó (loadAgentKey se llama UNA sola vez, al
+	// principio de agent-run, ver agentRunCmd), sin enterarse nunca de
+	// una clave nueva guardada en disco por una reconexión. 'restart'
+	// arranca el servicio si no estaba corriendo, e igual de bien lo
+	// reinicia si ya estaba — mismo resultado que el unload+load de
+	// installAgentServiceDarwin, que sí fuerza esto en macOS.
+	if out, err := exec.Command("systemctl", "--user", "restart", serviceName).CombinedOutput(); err != nil {
+		return fmt.Errorf("restart: %w (%s)", err, out)
 	}
 	return nil
 }
