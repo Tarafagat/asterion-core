@@ -8,6 +8,62 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 
 ## [Unreleased]
 
+### Fixed
+- **`make install`/`make build` fallaban en una instancia recién clonada
+  — ni siquiera compilaban `asterion`.** Reporte en vivo del usuario,
+  probando exactamente el escenario para el que se pensó `asterion
+  install prerequirements` (una instancia con SOLO `asterion-core`
+  clonado): `make install` tiraba `replacement directory ../asterion-lab
+  does not exist` (y lo mismo para `asterion-language`,
+  `asterion-plugin-contract`) y cortaba ahí, sin instalar nada. Causa
+  real: los `replace ../X` de `go.mod` hacen que Go necesite esas
+  carpetas hermanas para resolver el grafo de módulos de **todo**
+  `cmd/asterion` — no de comandos puntuales — así que ni siquiera se
+  puede compilar el propio `asterion install prerequirements` sin que las
+  carpetas que ese comando clona ya existan de antes. Problema
+  preexistente (ninguno de los archivos que lo disparan es nuevo de esta
+  sesión: `plugins.go`, `language.go`, `container.go`,
+  `internal/plugins/install.go`), pero que tumbaba en la práctica el
+  único punto de entrada pensado para resolverlo. De paso quedó
+  desmentida una afirmación vieja de la documentación ("sin los repos
+  hermanos, `asterion` sigue compilando y funcionando igual, solo
+  quedan sin esos módulos los comandos que los usan") — Go no compila
+  parcialmente así, el build entero fallaba.
+  - `Makefile`: catálogo de los 4 repos repetido en shell puro (mismo que
+    `internal/prereqs/prereqs.go`, comentario cruzado entre los dos para
+    no desincronizarlos) en un target nuevo `prerequirements`, del que
+    ahora `build` e `install` dependen (`build: prerequirements`,
+    `install: prerequirements`). Se ejecuta ANTES de compilar, no
+    después — clona lo que falte, no toca lo que ya está (mismo chequeo
+    `git rev-parse HEAD`, no un simple `.git`). Verificado en vivo
+    simulando una instancia recién clonada de verdad (solo
+    `cmd/`+`internal/`+`go.mod`+`Makefile`, sin ningún hermano al lado):
+    `make build` en frío clona los 4 y compila en un solo paso; correrlo
+    de nuevo es casi instantáneo (nada que clonar) y no repite ningún
+    clone.
+  - `asterion install prerequirements` (el comando en sí) ahora también
+    se recompila solo si clonó algo nuevo — pedido del usuario ("con los
+    comandos ya listos para funcionar"): un binario ya compilado no
+    cambia porque aparezca código nuevo en disco, así que sin esto el
+    propio comando dejaba los repos clonados pero los comandos que
+    dependían de ellos (`lab`, `plugin`, `language`, etc.) seguían sin
+    funcionar hasta una recompilación manual aparte. Corre `go install
+    ./cmd/asterion` internamente (sin `sudo` — a propósito no intenta
+    tocar `/usr/local/bin`, que puede pedir contraseña de forma
+    interactiva) y lo reporta en el resultado (texto y `--json`). Si
+    `--dir` apunta a una carpeta sin `asterion-core`, se omite en
+    silencio — no es un error, ese workspace no es el que compila este
+    binario. Verificado en vivo: clonado + recompilado automático deja
+    `lab`/`plugin`/`language` funcionando en el mismo binario ya
+    instalado, sin paso manual aparte; una corrida posterior sin nada
+    nuevo que clonar no dispara una recompilación de más (mtime del
+    binario sin cambios).
+  - `README.md` y `CliReference.tsx` (asterion-cloud) actualizados para
+    reflejar el comportamiento real: `make install`/`make build` ya son
+    autosuficientes en una máquina nueva, y qué hacer si se compila a
+    mano con `go build`/`go install` sin pasar por `make` (esos SÍ
+    siguen necesitando los hermanos ya presentes).
+
 ### Added
 - **`asterion install prerequirements`, comando nuevo para clonar de una
   los repos hermanos que hacen falta.** Hasta ahora, armar el workspace de

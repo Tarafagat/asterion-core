@@ -2,6 +2,10 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -41,7 +45,10 @@ func installPrerequirementsCmd() *cobra.Command {
 			"TERCEROS en la carpeta de config de Asterion, no el propio código fuente del\n" +
 			"ecosistema) ni con 'asterion cloud install-agent' (eso conecta una instancia\n" +
 			"a un proyecto de Asterion Cloud). Una vez clonados, 'asterion upgrade' los\n" +
-			"mantiene al día.",
+			"mantiene al día.\n\n" +
+			"Si clona algo nuevo, recompila 'asterion' solo — un binario ya compilado no\n" +
+			"cambia porque aparezca código nuevo en disco, así que sin este paso los\n" +
+			"comandos que dependen de lo recién clonado seguirían sin funcionar.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			workspaceDir := dir
 			if workspaceDir == "" {
@@ -55,12 +62,33 @@ func installPrerequirementsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
+			anyCloned := false
+			for _, r := range results {
+				if r.Cloned {
+					anyCloned = true
+					break
+				}
+			}
+			rebuild := ""
+			if anyCloned {
+				rebuild = rebuildSelf(workspaceDir)
+			}
+
 			if asJSON {
-				printJSON(map[string]any{"workspace": workspaceDir, "results": results})
+				payload := map[string]any{"workspace": workspaceDir, "results": results}
+				if rebuild != "" {
+					payload["rebuild"] = rebuild
+				}
+				printJSON(payload)
 				return nil
 			}
 			fmt.Printf("Workspace: %s\n\n", workspaceDir)
 			printPrereqResults(results)
+			if rebuild != "" {
+				fmt.Println()
+				fmt.Println(rebuild)
+			}
 			return nil
 		},
 	}
@@ -70,7 +98,6 @@ func installPrerequirementsCmd() *cobra.Command {
 }
 
 func printPrereqResults(results []prereqs.Result) {
-	anyCloned := false
 	anyErr := false
 	for _, r := range results {
 		switch {
@@ -78,16 +105,48 @@ func printPrereqResults(results []prereqs.Result) {
 			anyErr = true
 			fmt.Printf("✗ %s — %s\n", r.Name, r.Error)
 		case r.Cloned:
-			anyCloned = true
 			fmt.Printf("✓ %s — clonado\n", r.Name)
 		default:
 			fmt.Printf("✓ %s — ya estaba\n", r.Name)
 		}
 	}
-	if anyCloned {
-		fmt.Println("\nSe clonaron repos nuevos — 'cd asterion-core && make install' (o 'go install ./cmd/asterion') para que el binario compile con todos sus módulos.")
-	}
 	if anyErr {
 		fmt.Println("\nAlgún repo no se pudo clonar — ver el detalle arriba.")
 	}
+}
+
+// rebuildSelf recompila e instala 'asterion' de nuevo después de clonar
+// repos hermanos nuevos — un binario ya compilado no cambia porque
+// aparezca código fuente nuevo en disco, así que sin este paso los
+// comandos que dependían de lo recién clonado (lab/vm/container/images/
+// language, o plugin si lo que faltaba era asterion-plugin-contract)
+// seguirían sin funcionar hasta la próxima recompilación manual.
+//
+// Solo actualiza $GOPATH/bin (equivalente a 'go install ./cmd/asterion',
+// sin sudo) — a propósito no intenta copiar a /usr/local/bin como sí hace
+// 'make install': esa copia puede pedir la contraseña de sudo de forma
+// interactiva, y este comando no tiene cómo dársela. Si el workspace no
+// tiene asterion-core (ej. --dir apuntando a otro lado sin ese repo), se
+// omite en silencio — no es un error, ese workspace simplemente no es el
+// que compila este binario.
+func rebuildSelf(workspaceDir string) string {
+	coreDir := filepath.Join(workspaceDir, "asterion-core")
+	if _, err := os.Stat(filepath.Join(coreDir, "go.mod")); err != nil {
+		return ""
+	}
+	if _, err := exec.LookPath("go"); err != nil {
+		return "⚠ Se clonaron repos nuevos, pero no encontré 'go' en el PATH para recompilar — corré 'go install ./cmd/asterion' (o 'make install') a mano en asterion-core."
+	}
+	cmd := exec.Command("go", "install", "./cmd/asterion")
+	cmd.Dir = coreDir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		return fmt.Sprintf(
+			"⚠ Se clonaron repos nuevos, pero no pude recompilar 'asterion' automáticamente — corré "+
+				"'go install ./cmd/asterion' (o 'make install') a mano en asterion-core:\n%s", msg,
+		)
+	}
+	return "✓ 'asterion' recompilado con los módulos nuevos ($GOPATH/bin actualizado — si también usás " +
+		"/usr/local/bin, corré 'make install' o copialo a mano)."
 }

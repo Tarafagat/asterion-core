@@ -286,6 +286,14 @@ go build -o asterion ./cmd/asterion
 go build -o asterion-core ./cmd/asterion-core
 ```
 
+Esta forma (`go build`/`go install` a secas) necesita que los repos
+hermanos de la sección de abajo ya estén clonados al lado — `go.mod` los
+referencia con `replace ../X`, así que si falta alguno ni siquiera
+compila (`replacement directory ../asterion-lab does not exist`, visto
+en vivo en una instancia recién clonada). `make build`/`make install`
+(dos párrafos más abajo) no tienen ese problema: los clonan solos si
+hace falta, antes de compilar.
+
 Así compilado, `asterion --version`/`-v` muestra `dev` — no hay forma de
 saber la versión real sin un paso explícito. `make build` compila el
 mismo binario pero además le graba la versión del último commit (el
@@ -323,9 +331,11 @@ número de versión, y no toca `/usr/local/bin`).
 Para compilar con todos sus módulos hacen falta, al lado de este repo, los
 hermanos que declara como `replace ../X` en `go.mod` — `asterion-lab`,
 `asterion-plugin-contract`, `asterion-language` — más `asterion-shared`
-(dependencia editable de Python para `backend-core`, ver más abajo). Ya
-con `asterion` compilado e instalado (los pasos de arriba), un solo
-comando los clona a todos, saltando los que ya estén:
+(dependencia editable de Python para `backend-core`, ver más abajo).
+`make install`/`make build` (arriba) ya los clonan solos si falta alguno,
+así que en general no hace falta nada más — pero con `asterion` ya
+instalado, lo mismo está disponible sin pasar por `make`, para
+resincronizar un workspace más tarde o para scriptearlo (`--json`):
 
 ```bash
 asterion install prerequirements
@@ -333,11 +343,21 @@ asterion install prerequirements
 # ✓ asterion-language — clonado
 # ✓ asterion-plugin-contract — clonado
 # ✓ asterion-shared — clonado
+# ✓ 'asterion' recompilado con los módulos nuevos (...)
 ```
 
-Correrlo de nuevo es seguro (repo ya clonado = se deja tal cual). De ahí en
-más, `asterion upgrade` los mantiene al día sin tener que entrar a cada
-uno a mano:
+Correrlo de nuevo es seguro (repo ya clonado = se deja tal cual). Si clonó
+algo nuevo, recompila `asterion` solo al final (`go install
+./cmd/asterion` interno, sin `sudo` — si también usás `/usr/local/bin`,
+`make install` después copia la versión ya recompilada ahí) — un binario
+ya compilado no cambia porque aparezca código nuevo en disco, así que sin
+este paso los comandos que dependían de lo recién clonado (`lab`/`vm`/
+`container`/`images`/`language`, o `plugin` si lo que faltaba era
+`asterion-plugin-contract`) seguirían sin funcionar hasta la próxima
+recompilación manual.
+
+De ahí en más, `asterion upgrade` mantiene ese workspace al día sin tener
+que entrar a cada repo a mano:
 
 ```bash
 asterion upgrade --list          # ver qué repos encontraría, sin tocar nada

@@ -12,8 +12,36 @@ BINARY  := asterion
 # VERSION queda vacío y el build cae a "dev" en vez de fallar.
 VERSION := $(shell git log -1 --format=%s 2>/dev/null | grep -oE '^V\.?[0-9]+(\.[0-9]+)*' | sed -E 's/^V\.?/v/')
 
+# Repos hermanos que hacen falta para que go.mod resuelva sus
+# 'replace ... => ../X' — sin ellos, ni 'go build' ni 'go install'
+# arrancan siquiera (error real, visto en vivo en una instancia recién
+# clonada: "replacement directory ../asterion-lab does not exist"). Por
+# eso 'build'/'install' dependen de 'prerequirements' ACÁ ABAJO: tiene que
+# resolverse antes de compilar, no después — 'asterion install
+# prerequirements' (el comando equivalente ya compilado, ver
+# internal/prereqs/prereqs.go) no sirve para este primer build porque
+# todavía no hay ningún binario de asterion para correrlo. Mismo catálogo
+# en los dos lugares — si se agrega/saca un repo, tocar ambos.
+PREREQ_REPOS := asterion-lab asterion-language asterion-plugin-contract asterion-shared
+
+.PHONY: prerequirements
+prerequirements:
+	@for repo in $(PREREQ_REPOS); do \
+		if [ -d "../$$repo/.git" ] && git -C "../$$repo" rev-parse HEAD >/dev/null 2>&1; then \
+			echo "✓ $$repo — ya estaba"; \
+		else \
+			rm -rf "../$$repo"; \
+			if out="$$(git clone --depth 1 "https://github.com/Tarafagat/$$repo.git" "../$$repo" 2>&1)"; then \
+				echo "✓ $$repo — clonado"; \
+			else \
+				echo "✗ $$repo — no se pudo clonar:"; \
+				echo "$$out" | sed 's/^/    /'; \
+			fi; \
+		fi; \
+	done
+
 .PHONY: build
-build:
+build: prerequirements
 ifeq ($(VERSION),)
 	go build -o $(BINARY) ./cmd/asterion
 else
@@ -37,7 +65,7 @@ version:
 # código de la última vez que se instaló hasta que se vuelve a correr
 # esto.
 .PHONY: install
-install:
+install: prerequirements
 ifeq ($(VERSION),)
 	go install ./cmd/asterion
 else
