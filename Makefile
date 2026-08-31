@@ -40,8 +40,37 @@ prerequirements:
 		fi; \
 	done
 
+# 'go' hace falta para 'build'/'install' — chequeo explícito ANTES de
+# invocarlo, en vez de dejar que el propio 'go build'/'go install' falle
+# con el "go: not found" críptico del shell (error real, visto en vivo:
+# alguien corrió 'sudo make install' — no 'make install' a secas — y todo
+# el Makefile, 'go install' incluido, terminó ejecutándose con el PATH
+# restringido de root/sudo (secure_path en sudoers), que no tiene por qué
+# incluir dónde sea que 'go' esté instalado para el usuario normal). Este
+# Makefile NUNCA necesita que se lo invoque con sudo entero — el único
+# paso que a veces pide contraseña es la copia a /usr/local/bin de acá
+# abajo, y eso ya se pide solo, con 'sudo cp' puntual, no arrastrando todo
+# el resto del build con root.
+.PHONY: check-go
+check-go:
+	@command -v go >/dev/null 2>&1 || { \
+		echo "✗ No encontré 'go' en el PATH."; \
+		if [ "$$(id -u)" = "0" ]; then \
+			echo "  Estás corriendo esto como root (¿con 'sudo make ...'?) — sudo no hereda tu"; \
+			echo "  PATH normal por diseño, así que si 'go' está instalado solo para tu usuario,"; \
+			echo "  root no lo ve aunque tu shell normal sí lo encuentre."; \
+			echo "  Este Makefile NO necesita sudo para compilar — el único paso que a veces"; \
+			echo "  pide contraseña (copiar a /usr/local/bin) ya la pide él solo. Corré:"; \
+			echo "    make $(MAKECMDGOALS)"; \
+			echo "  SIN sudo."; \
+		else \
+			echo "  Instalá Go (https://go.dev/dl/) y asegurate de que quede en tu \$$PATH."; \
+		fi; \
+		exit 1; \
+	}
+
 .PHONY: build
-build: prerequirements
+build: check-go prerequirements
 ifeq ($(VERSION),)
 	go build -o $(BINARY) ./cmd/asterion
 else
@@ -65,7 +94,7 @@ version:
 # código de la última vez que se instaló hasta que se vuelve a correr
 # esto.
 .PHONY: install
-install: prerequirements
+install: check-go prerequirements
 ifeq ($(VERSION),)
 	go install ./cmd/asterion
 else

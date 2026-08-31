@@ -8,6 +8,30 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 
 ## [Unreleased]
 
+### Fixed
+- **`sudo make install`/`sudo make build` fallaban con `/bin/sh: 1: go:
+  not found`, en dos instancias distintas.** Reporte del usuario: corrió
+  `sudo make install` (todo el comando con sudo, no solo la copia a
+  `/usr/local/bin` que a veces la necesita) y `go install` — que corre
+  ANTES de esa copia, ni siquiera llegó ahí — falló porque no encontró
+  `go`. Causa real: `sudo` no hereda el `$PATH` normal del usuario por
+  diseño (`secure_path` en `/etc/sudoers`) — si `go` está instalado solo
+  para el usuario normal (lo más común, `/usr/local/go/bin` o similar
+  agregado a mano en `.bashrc`/`.profile`), root nunca lo ve, sudo o no.
+  El Makefile nunca necesitó que se lo invocara con sudo entero — el
+  único paso que a veces pide contraseña (la copia a `/usr/local/bin`)
+  ya la pedía él solo, puntual, con `sudo cp` — pero nada avisaba esto
+  antes de que `go install` fallara con un error de shell críptico.
+  - Target nuevo `check-go`, del que ahora dependen `build`/`install`:
+    si `go` no está en el PATH, corta ANTES de intentar compilar, con un
+    mensaje que detecta el caso más probable (correr como root/con
+    sudo) y dice explícitamente que no hace falta — `make install` a
+    secas alcanza.
+  - Verificado: `make check-go` con un PATH sin `go` corta con el
+    mensaje esperado (probado también el texto exacto de la rama "sos
+    root"); `make build` de punta a punta (check-go + prerequirements +
+    compilar) sigue funcionando igual que antes cuando `go` sí está.
+
 ### Added
 - **`asterion agent restart [nombre-local]`, comando nuevo.** Pregunta
   del usuario, siguiendo el arreglo de specs reales de acá abajo: "¿cuál
