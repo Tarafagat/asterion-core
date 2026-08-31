@@ -9,6 +9,54 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Fixed
+- **`asterion cloud connect`/`install-agent` mandaban siempre 1 CPU / 1GB
+  RAM / 10GB disco / "linux" a Asterion Cloud, sin importar el hardware
+  real de la máquina.** Reporte del usuario: el dashboard de Asterion
+  Cloud mostraba esos valores fijos para toda instancia local conectada,
+  en vez de las características reales que esa misma máquina sí muestra
+  bien en `asterion local serve`/`local info`. Causa real:
+  `connectLocalInstance` (`cmd/asterion/cloud.go`) armaba el payload de
+  conexión con **literales fijos en el código** (`"cpu_cores": 1,
+  "ram_gb": 1, "storage_gb": 10, "os": "linux"`) — nunca llamaba a
+  `internal/sysinfo.GatherInfo()`, el mismo paquete que ya usan
+  `asterion local info` y `agent-run` para detectar el hardware real
+  (confirmado: ese paquete detecta bien, no tenía ningún bug — el
+  problema era exclusivamente que esta función nunca lo llamaba). El
+  backend (`connect_local_instance` en asterion-cloud) solo hace de
+  passthrough de lo que el CLI le manda, sin re-detectar nada — confía
+  100% en el cliente.
+  - `connectLocalInstance` ahora llama `sysinfo.GatherInfo()` y manda
+    `cpu_cores`/`ram_gb`/`storage_gb`/`os` reales (RAM/disco en GB
+    vienen como float, se redondean, nunca menos de 1). Si la detección
+    falla (hoy, solo en un SO no soportado — Windows, ver el comentario
+    de `internal/sysinfo`), cae a los valores fijos de antes pero
+    avisando por stderr, en vez de fallar en silencio.
+  - El heartbeat/métricas del agent (`agent-run`) tampoco arreglan esto
+    después: revisado a fondo, ni `POST /agent/heartbeat` ni `POST
+    /agent/usage-metrics` tienen forma de cargar `cpu_cores`/RAM total
+    en su formato — solo mandan uso puntual (% CPU, GB usados), nunca
+    capacidad total. Por eso el fix tenía que ir en el momento de
+    conectar, no se podía parchar después con un heartbeat que ya
+    existiera.
+  - Verificado en vivo, de punta a punta: `sysinfo.GatherInfo()` detectó
+    bien esta Mac (8 CPU, 16GB RAM, ~460GB disco, "darwin" — nada de
+    eso viene de una VM/contenedor, `Virtualization: physical`
+    correcto); levantando MariaDB + el backend real de asterion-cloud
+    descartables y mandando ese payload real a `POST
+    /projects/{slug}/instances/connect-local`, la fila en `instances`
+    quedó con esos mismos valores exactos (confirmado con una consulta
+    SQL directa) — no el 1/1/10/linux de antes.
+  - **Encontrado de paso, mismo patrón, pero fuera de este arreglo**: el
+    flujo de *importar* una instancia real de un proveedor cloud
+    (AWS/Azure/GCP/OCI, descubierta con "Discovery" en el dashboard —
+    `CloudAccountsTab.tsx`, `importMutation`) también manda
+    `cpu_cores: 1, ram_gb: 1` fijos. Es un flujo distinto (importa una
+    VM ajena vía la API del proveedor, no una máquina donde corre
+    `asterion` — no hay ningún `sysinfo` que llamar ahí) y no estaba en
+    el reporte del usuario, así que no se tocó — anotado para resolver
+    aparte si hace falta.
+
+### Fixed
 - **`asterion plugin build` fallaba en una instancia recién clonada —
   mismo problema que el de `make install` de acá abajo, un nivel más
   adentro.** Reporte en vivo del usuario, en el mismo `fuelity-bot`:

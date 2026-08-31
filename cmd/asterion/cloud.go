@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"asterion-core/internal/apiclient"
 	"asterion-core/internal/cliconfig"
 	"asterion-core/internal/localstore"
+	"asterion-core/internal/sysinfo"
 )
 
 // cloudCmd agrupa todo lo que implica Asterion Cloud: iniciar sesión,
@@ -226,15 +228,36 @@ func connectLocalInstance(projectSlug string, instance localstore.Instance) (ins
 		return 0, "", false, err
 	}
 
-	result, err := client.ConnectLocalInstance(projectSlug, map[string]any{
+	payload := map[string]any{
 		"external_ref": instance.ID,
 		"name":         instance.Name,
-		"cpu_cores":    1,
-		"ram_gb":       1,
-		"storage_gb":   10,
-		"os":           "linux",
 		"region":       "local",
-	})
+	}
+	// Características reales de ESTA máquina (mismo paquete que usa
+	// `asterion local info`/`agent-run` — ver internal/sysinfo), no
+	// valores fijos: Asterion Cloud antes recibía siempre 1 CPU/1GB acá
+	// mismo, sin importar el hardware real. El backend (schemas/
+	// instances.py) espera enteros — RAMTotalGB/DiskTotalGB vienen en
+	// GB reales (float), se redondean; nunca menos de 1, por si el
+	// redondeo cae justo debajo en una máquina con muy poco disco/RAM.
+	if info, sysErr := sysinfo.GatherInfo(); sysErr == nil {
+		payload["cpu_cores"] = info.CPUCores
+		payload["ram_gb"] = max(1, int(math.Round(info.RAMTotalGB)))
+		payload["storage_gb"] = max(1, int(math.Round(info.DiskTotalGB)))
+		payload["os"] = info.OS
+	} else {
+		fmt.Fprintf(os.Stderr,
+			"⚠ No pude detectar las características reales de esta máquina (%s) — Asterion Cloud va a "+
+				"mostrar valores por defecto (1 CPU / 1GB); podés corregirlos a mano desde el dashboard.\n",
+			sysErr,
+		)
+		payload["cpu_cores"] = 1
+		payload["ram_gb"] = 1
+		payload["storage_gb"] = 10
+		payload["os"] = "linux"
+	}
+
+	result, err := client.ConnectLocalInstance(projectSlug, payload)
 	if err != nil {
 		return 0, "", false, err
 	}
