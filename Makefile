@@ -93,6 +93,20 @@ version:
 # no tiene "hot reload" para un CLI, el binario instalado queda con el
 # código de la última vez que se instaló hasta que se vuelve a correr
 # esto.
+#
+# La copia a /usr/local/bin nunca es un 'cp' directo sobre el destino:
+# escribe a un archivo temporal al lado y recién después lo mueve encima
+# (rename() atómico) — si 'asterion' YA está corriendo desde ahí (caso
+# común: el agente instalado con 'cloud install-agent' corre justo el
+# binario de /usr/local/bin como proceso de fondo persistente), un 'cp'
+# directo intenta escribir sobre los bytes de un ejecutable en uso y
+# Linux lo rechaza con "Text file busy" (ETXTBSY — ni root se salta este
+# chequeo, no es de permisos; visto en vivo en fuelity-bot). Un rename()
+# en el mismo filesystem no tiene ese problema: solo cambia a qué inode
+# apunta el nombre "asterion" en el directorio, sin tocar los bytes del
+# inode viejo — el proceso que ya estaba corriendo lo sigue usando sin
+# problema hasta que se lo reinicia a mano ('asterion agent restart').
+# Mismo patrón que ya usa 'go install' para instalarse a sí mismo.
 .PHONY: install
 install: check-go prerequirements
 ifeq ($(VERSION),)
@@ -102,10 +116,12 @@ else
 endif
 	@installed="$$(go env GOPATH)/bin/$(BINARY)"; \
 	echo "✓ instalado en $$installed"; \
+	target=/usr/local/bin/$(BINARY); \
+	tmp="$$target.new"; \
 	if [ -w /usr/local/bin ]; then \
-		cp "$$installed" /usr/local/bin/$(BINARY) && copied=1 || copied=0; \
+		cp "$$installed" "$$tmp" && mv -f "$$tmp" "$$target" && copied=1 || copied=0; \
 	else \
-		sudo cp "$$installed" /usr/local/bin/$(BINARY) && copied=1 || copied=0; \
+		sudo sh -c "cp '$$installed' '$$tmp' && mv -f '$$tmp' '$$target'" && copied=1 || copied=0; \
 	fi; \
 	if [ "$$copied" = "1" ]; then \
 		echo "✓ copiado a /usr/local/bin/$(BINARY) (ya está en el \$$PATH de cualquier shell, sin configurar nada)"; \
@@ -114,7 +130,9 @@ endif
 	else \
 		echo "⚠ NO se pudo copiar a /usr/local/bin/$(BINARY) (sudo necesita una terminal interactiva"; \
 		echo "  para la contraseña, y este Makefile no la tiene acá) — corré esto a mano:"; \
-		echo "    sudo cp $$installed /usr/local/bin/$(BINARY)"; \
+		echo "    sudo sh -c \"cp $$installed $$tmp && mv -f $$tmp $$target\""; \
+		echo "  (no 'sudo cp' directo: si 'asterion' ya está corriendo desde ahí, un cp directo"; \
+		echo "  falla con \"Text file busy\" — ver el comentario arriba de este target)"; \
 	fi; \
 	resolved="$$(command -v $(BINARY) 2>/dev/null)"; \
 	if [ -n "$$resolved" ] && [ "$$resolved" != "$$installed" ] && [ "$$resolved" != "/usr/local/bin/$(BINARY)" ]; then \

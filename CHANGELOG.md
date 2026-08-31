@@ -9,6 +9,38 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Fixed
+- **`make install` fallaba con `cp: cannot create regular file
+  '/usr/local/bin/asterion': Text file busy`.** Reporte del usuario en
+  `fuelity-bot`, con el `check-go` de acá abajo ya corregido: esta vez
+  llegó hasta el `go install` (con éxito) pero se cortó en la copia a
+  `/usr/local/bin`. Causa real: el agente instalado con `cloud
+  install-agent` corre como proceso de fondo persistente ejecutando
+  justo `/usr/local/bin/asterion` — Linux rechaza escribir encima de los
+  bytes de un ejecutable en uso ahora mismo (`ETXTBSY`, ni root se lo
+  salta, no es un chequeo de permisos). Va a pasarle a cualquiera con el
+  agente corriendo — el caso normal para quien ya está usando esto, no
+  un borde raro.
+  - La copia ahora escribe a un archivo temporal al lado
+    (`asterion.new`) y recién después lo mueve encima con `mv -f` — un
+    `rename()` atómico dentro del mismo directorio/filesystem, que no
+    pisa los bytes del inode viejo (el proceso ya corriendo lo sigue
+    usando sin problema hasta que se reinicia a mano, `asterion agent
+    restart`) sino que solo cambia a qué apunta el nombre. Aplicado a
+    los dos caminos (con y sin `sudo`) y al mensaje de "corré esto a
+    mano" cuando la copia automática no puede.
+  - Verificado en esta Mac (con un binario Go real compilado, corriendo
+    de fondo, no un simple script): el `cp` a temporal + `mv` encima
+    reemplaza el archivo con éxito sin tocar el proceso viejo, que sigue
+    corriendo sin interrupción — confirmado con `cmp` que el archivo
+    quedó con el contenido nuevo. La sintaxis completa del target
+    `install` también se confirmó con `make -n install` (todo el bloque
+    sigue siendo una sola invocación de shell, sin cortes). El error
+    "Text file busy" en sí no se pudo reproducir en esta Mac — macOS/
+    APFS es más permisivo que Linux acá — pero es el mensaje estándar y
+    bien documentado de Linux para exactamente este caso, y es
+    exactamente lo que mostró la terminal real de `fuelity-bot`.
+
+### Fixed
 - **`sudo make install`/`sudo make build` fallaban con `/bin/sh: 1: go:
   not found`, en dos instancias distintas.** Reporte del usuario: corrió
   `sudo make install` (todo el comando con sudo, no solo la copia a
