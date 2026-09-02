@@ -1157,16 +1157,23 @@ quedó así.
 
 ## Estado actual (honesto)
 
-Los 4 adapters (AWS/Azure/GCP/OCI) declaran capabilities reales y están
-100% cableados end-to-end (CLI → API de Asterion → asterion-core →
-adapter), pero ninguno llama todavía al SDK real del proveedor — cada
-método `Create*` y `List*` (descubrimiento de recursos existentes, ver
-capability `Discovery`) devuelve `adapters.ErrNotImplemented`. No hay
-credenciales reales de ningún proveedor disponibles para probar esa
+Los 5 adapters (AWS/Azure/GCP/OCI/Vercel) declaran capabilities reales y
+están 100% cableados end-to-end (CLI → API de Asterion → asterion-core →
+adapter). AWS/Azure/GCP/OCI no llaman todavía al SDK real del proveedor
+— cada método `Create*` y `List*` (descubrimiento de recursos existentes,
+ver capability `Discovery`) devuelve `adapters.ErrNotImplemented`. No hay
+credenciales reales de esos proveedores disponibles para probar esa
 integración de punta a punta, y publicar una llamada real sin poder
-probarla es peor que no tenerla. El contrato (`ProviderAdapter`, specs,
-capabilities) ya está listo para que esa implementación se agregue adapter
-por adapter sin tocar nada del resto del sistema.
+probarla es peor que no tenerla. Vercel es la primera excepción parcial:
+`ListInstances` sí llama a su API real (`GET /v9/projects`, ver
+`internal/adapters/vercel`) — el resto de sus métodos (`CreateInstance` y
+las otras tres `List*`) siguen `ErrNotImplemented`, mismo criterio que
+los demás, porque Vercel no tiene VPCs/bases de datos gestionadas/buckets
+en el sentido que modela este contrato, y su pricing real (facturación
+por uso, no por cpu/ram) tampoco está integrado. El contrato
+(`ProviderAdapter`, specs, capabilities) ya está listo para que esa
+implementación se agregue adapter por adapter sin tocar nada del resto
+del sistema.
 
 `asterion local` y `agent-run` (internal/sysinfo) solo leen datos reales en
 Linux (/proc, /sys) — en otros sistemas operativos devuelven un error claro

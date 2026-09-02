@@ -14,11 +14,12 @@ import (
 	"asterion-core/internal/adapters/azure"
 	"asterion-core/internal/adapters/gcp"
 	"asterion-core/internal/adapters/oci"
+	"asterion-core/internal/adapters/vercel"
 	"asterion-core/internal/coreserver"
 )
 
 func main() {
-	registry := adapters.NewRegistry(aws.New(), azure.New(), gcp.New(), oci.New())
+	registry := adapters.NewRegistry(aws.New(), azure.New(), gcp.New(), oci.New(), vercel.New())
 	server := coreserver.New(registry)
 
 	addr := os.Getenv("ASTERION_CORE_ADDR")

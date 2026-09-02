@@ -8,6 +8,44 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 
 ## [Unreleased]
 
+### Added
+- **Vercel como proveedor nuevo (`internal/adapters/vercel`), con
+  discovery real.** El usuario pidió inicialmente correr `asterion-core`
+  y el agente EN Vercel — no es posible (`agent-run` es un loop infinito
+  pensado para systemd/launchd con `Restart=always`; Vercel mata
+  cualquier función que no responda dentro de su límite de tiempo, sin
+  "máquina" real para que `internal/sysinfo` lea, ni hypervisor para
+  `asterion-lab`). Lo que sí se construyó, tras aclarar esto: Vercel como
+  quinto proveedor, mismo lugar que AWS/Azure/GCP/OCI.
+  - `ListInstances` llama de verdad a `GET https://api.vercel.com/v9/projects`
+    (Bearer token + `?teamId=` opcional) — a diferencia de los otros 4
+    proveedores (100% `ErrNotImplemented` todavía), esta es la primera
+    llamada real a un SDK/API externa en todo el sistema de adapters.
+    `CreateInstance` y las otras tres `List*` quedan `ErrNotImplemented`
+    a propósito — Vercel no tiene VPCs/bases de datos gestionadas/buckets
+    en el sentido que modela este contrato, y su pricing real
+    (facturación por uso, no por cpu/ram) no se integra.
+  - `Capabilities()` declara solo `Compute` + `Discovery` — confirmado
+    con el gate real de `coreserver` (`RequireCapability`) que
+    `Discovery` es la única que hace falta para que `ListInstances` sea
+    invocable; `Compute` es honesto pero no funcionalmente necesario acá.
+  - Registrado en los dos call sites que ya existían (`cmd/asterion-core/main.go`
+    y `cmd/asterion/core.go`, `asterion core serve`) — ninguno de los dos
+    necesitó nada más allá de agregar `vercel.New()` a la lista.
+  - Verificado en vivo, no solo con tests: 6 tests unitarios contra un
+    `httptest.Server` (headers, query string, parseo, y los 3 caminos de
+    error — token vacío, status != 200, JSON inválido) más una prueba de
+    la cadena completa real: `POST /adapters/vercel/instances/discover`
+    contra un `asterion-core` corriendo de verdad, con un token
+    deliberadamente falso, contra la API REAL de `api.vercel.com` —
+    volvió un 403 "Not authorized"/`invalidToken: true` genuino,
+    confirmando en vivo (no por lectura de documentación) que la URL,
+    el método de auth (Bearer) y el mapeo de errores de `coreserver`
+    (502) funcionan de punta a punta contra el servicio real.
+  - `README.md` ("Estado actual (honesto)") actualizado — ya no dice
+    "los 4 adapters, ninguno llama al SDK real": ahora son 5, con Vercel
+    como la primera excepción parcial.
+
 ### Fixed
 - **`make install` fallaba con `cp: cannot create regular file
   '/usr/local/bin/asterion': Text file busy`.** Reporte del usuario en
