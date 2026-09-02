@@ -46,6 +46,46 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
     "los 4 adapters, ninguno llama al SDK real": ahora son 5, con Vercel
     como la primera excepción parcial.
 
+- **`GetCostReport` — costo real (ya facturado) de Vercel, capability
+  `Pricing`.** Pedido del usuario tras conectar su cuenta de Vercel:
+  quería que el costo de esa instancia se calculara con datos reales de
+  uso, no con el `extra_monthly_usd` manual. Vercel expone justo eso —
+  `GET https://api.vercel.com/v1/billing/charges` (formato FOCUS v1.3,
+  el mismo endpoint que alimenta el propio dashboard de "Usage" de
+  Vercel), con costo en USD ya calculado por ellos, agrupable por
+  servicio (`ServiceName`: "Edge Requests", "Fast Data Transfer", etc.).
+  - Tipos nuevos en `internal/adapters/adapter.go`: `CostReportQuery`
+    (`From`/`To` ISO 8601, `ExternalID` opcional para filtrar a un
+    proyecto puntual, `Credentials`) y `CostLineItem`
+    (`ServiceName`/`BilledCostUSD`/`ConsumedQuantity`/`ConsumedUnit`).
+    `GetCostReport` se agregó al contrato `ProviderAdapter` — como es
+    una interfaz fija, los 4 proveedores restantes (AWS/Azure/GCP/OCI)
+    recibieron el stub `ErrNotImplemented`, mismo patrón que ya usan
+    `CreateInstance`/`ListNetworks`/etc.
+  - Reusa la capability `Pricing` que ya existía declarada (por
+    AWS/Azure/GCP) pero sin ningún método del contrato que la usara
+    todavía — no hizo falta inventar una capability nueva.
+  - El endpoint de Vercel es **streaming JSONL** (una línea = un cargo),
+    a diferencia de `/v9/projects` que es un único JSON — se parsea con
+    `bufio.Scanner` línea por línea, tolerando líneas inválidas sin
+    tirar todo el reporte. `BilledCost` se decodifica con
+    `json.RawMessage` + un parser tolerante (`parseCostAmount`) porque
+    la propia documentación de Vercel es inconsistente entre el schema
+    (`number`) y el ejemplo (`"123"`, con comillas) — se soportan los
+    dos formatos sin asumir cuál es el real.
+  - Nueva ruta en `coreserver`: `POST /adapters/{code}/costs/report` →
+    `handleGetCostReport`, gateada por `capabilities.Pricing`, reusando
+    tal cual los helpers genéricos `respondListResult[T]` ya existentes.
+  - Verificado con 8 tests unitarios nuevos (`httptest.Server` con JSONL
+    simulado: agrupación por servicio, filtrado por `ExternalID`,
+    `BilledCost` como string entre comillas, token vacío, rango de
+    fechas faltante, status no-200, líneas inválidas toleradas) y, igual
+    que `ListInstances`, contra la API REAL de `api.vercel.com` con un
+    token deliberadamente falso — volvió un 403 genuino
+    (`"forbidden"`/`"Not authorized"`/`invalidToken: true`), confirmando
+    en vivo la URL, los query params (`from`/`to`/`teamId`) y el mapeo
+    de errores de punta a punta.
+
 ### Fixed
 - **`make install` fallaba con `cp: cannot create regular file
   '/usr/local/bin/asterion': Text file busy`.** Reporte del usuario en

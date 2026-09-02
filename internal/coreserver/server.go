@@ -30,6 +30,7 @@ import (
 //	POST /adapters/{code}/networks/discover
 //	POST /adapters/{code}/databases/discover
 //	POST /adapters/{code}/buckets/discover
+//	POST /adapters/{code}/costs/report
 type Server struct {
 	registry *adapters.Registry
 	mux      *http.ServeMux
@@ -58,6 +59,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /adapters/{code}/networks/discover", s.handleListNetworks)
 	s.mux.HandleFunc("POST /adapters/{code}/databases/discover", s.handleListManagedDatabases)
 	s.mux.HandleFunc("POST /adapters/{code}/buckets/discover", s.handleListBuckets)
+	s.mux.HandleFunc("POST /adapters/{code}/costs/report", s.handleGetCostReport)
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -192,6 +194,20 @@ func (s *Server) handleListBuckets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := adapter.ListBuckets(context.Background(), q)
+	respondListResult(w, result, err)
+}
+
+func (s *Server) handleGetCostReport(w http.ResponseWriter, r *http.Request) {
+	code := r.PathValue("code")
+	adapter, err := s.resolveWithCapability(w, code, capabilities.Pricing)
+	if err != nil {
+		return
+	}
+	var q adapters.CostReportQuery
+	if !decodeBody(w, r, &q) {
+		return
+	}
+	result, err := adapter.GetCostReport(context.Background(), q)
 	respondListResult(w, result, err)
 }
 

@@ -104,6 +104,30 @@ type DiscoveryQuery struct {
 	Credentials map[string]string `json:"credentials"`
 }
 
+// CostReportQuery describe el rango de fechas (ISO 8601) sobre el que pedir
+// costo real de uso ya facturado por el proveedor. ExternalID, cuando no
+// está vacío, filtra el reporte a un único recurso (ej. un proyecto de
+// Vercel) — sin él, algunos proveedores devolverían el gasto de toda la
+// cuenta/equipo, no de una instancia puntual.
+type CostReportQuery struct {
+	From        string            `json:"from"`
+	To          string            `json:"to"`
+	ExternalID  string            `json:"external_id,omitempty"`
+	Credentials map[string]string `json:"credentials"`
+}
+
+// CostLineItem es un renglón de costo real ya facturado por el proveedor
+// para un servicio/recurso puntual dentro del rango de CostReportQuery (ej.
+// "Edge Requests" en Vercel). BilledCostUSD sale del proveedor, nunca se
+// calcula localmente — a diferencia de InstanceResult, esto no describe un
+// recurso sino un cargo.
+type CostLineItem struct {
+	ServiceName      string  `json:"service_name"`
+	BilledCostUSD    float64 `json:"billed_cost_usd"`
+	ConsumedQuantity float64 `json:"consumed_quantity,omitempty"`
+	ConsumedUnit     string  `json:"consumed_unit,omitempty"`
+}
+
 // ProviderAdapter es el contrato que cada proveedor debe cumplir para que
 // asterion-core pueda operarlo. Code identifica al proveedor (debe
 // coincidir con `providers.code` en la base de datos de Asterion: aws,
@@ -127,6 +151,12 @@ type ProviderAdapter interface {
 	ListNetworks(ctx context.Context, q DiscoveryQuery) ([]NetworkResult, error)
 	ListManagedDatabases(ctx context.Context, q DiscoveryQuery) ([]DatabaseResult, error)
 	ListBuckets(ctx context.Context, q DiscoveryQuery) ([]BucketResult, error)
+	// GetCostReport devuelve costo real ya facturado por el proveedor
+	// (capability Pricing) — a diferencia de calculate_cost del lado de
+	// Asterion Cloud, que ESTIMA a partir de cpu/ram/storage, esto son
+	// cargos reales que el proveedor ya calculó. Devolver ErrNotImplemented
+	// es válido mientras el adapter no tenga esto cableado.
+	GetCostReport(ctx context.Context, q CostReportQuery) ([]CostLineItem, error)
 }
 
 // RequireCapability es el gate que usa el Core antes de invocar un adapter:

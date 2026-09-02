@@ -68,3 +68,7 @@ func (a *Adapter) ListManagedDatabases(ctx context.Context, q adapters.Discovery
 func (a *Adapter) ListBuckets(ctx context.Context, q adapters.DiscoveryQuery) ([]adapters.BucketResult, error) {
 	return nil, adapters.ErrNotImplemented
 }
+
+func (a *Adapter) GetCostReport(ctx context.Context, q adapters.CostReportQuery) ([]adapters.CostLineItem, error) {
+	return nil, adapters.ErrNotImplemented
+}
