@@ -46,6 +46,13 @@ type Config struct {
 	HeartbeatInterval int                         `json:"heartbeat_interval_seconds"`
 	RemoteManagement  bool                        `json:"remote_management_enabled"`
 	Permissions       RemoteManagementPermissions `json:"remote_management_permissions"`
+	// ReportLocalServe: si el heartbeat del agente (cmd/asterion/agent.go,
+	// reportHeartbeat) suma el puerto de 'local serve --background' y la
+	// URL del túnel activo (si hay uno) — apagado por default, mismo
+	// criterio que RemoteManagement: nada se comparte con Cloud hasta que
+	// el usuario lo prende a mano (ver 'asterion local config set
+	// report_local_serve true' o 'asterion local route').
+	ReportLocalServe bool `json:"report_local_serve"`
 }
 
 // DefaultConfig son los valores con los que arranca una máquina nueva:

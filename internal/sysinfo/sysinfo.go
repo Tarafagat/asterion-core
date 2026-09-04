@@ -20,7 +20,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
+	// "syscall" se movió a disk_unix.go junto con diskGB — la única
+	// función de este paquete que lo necesitaba.
 	"time"
 )
 
@@ -313,17 +314,14 @@ func ramGBDarwin() (usedGB, totalGB float64, err error) {
 	return usedGB, totalGB, nil
 }
 
-func diskGB(path string) (usedGB, totalGB float64, err error) {
-	var stat syscall.Statfs_t
-	if err := syscall.Statfs(path, &stat); err != nil {
-		return 0, 0, err
-	}
-	total := float64(stat.Blocks) * float64(stat.Bsize)
-	free := float64(stat.Bavail) * float64(stat.Bsize)
-	totalGB = total / 1024 / 1024 / 1024
-	usedGB = (total - free) / 1024 / 1024 / 1024
-	return usedGB, totalGB, nil
-}
+// diskGB: implementación real por SO, separada en disk_unix.go (usa
+// syscall.Statfs, que no existe en Windows) y disk_windows.go — mismo
+// motivo y mismo patrón de build tags que isAlive en
+// internal/localserve/internal/tunnel. Solo Linux/macOS tienen una
+// implementación real; el stub de Windows nunca se llega a llamar en la
+// práctica porque Snapshot()/Info() (más arriba en este archivo) ya
+// rechazan Windows antes de intentarlo — existe únicamente para que el
+// paquete compile ahí, no agrega ninguna métrica nueva de Windows.
 
 // networkGB suma bytes recibidos/enviados de todas las interfaces salvo
 // loopback, desde que la máquina arrancó (son contadores acumulativos del

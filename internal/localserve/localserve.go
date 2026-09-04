@@ -13,8 +13,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
-	"syscall"
 	"time"
 )
 
@@ -111,23 +109,12 @@ func LoadState() (State, bool, error) {
 	return s, true, nil
 }
 
-// isAlive confirma si pid sigue vivo con señal 0 (POSIX) — igual técnica
-// que internal/plugins.isAlive. En Windows no hay forma de confirmarlo sin
-// una dependencia nueva, así que se devuelve explícitamente "no sé" en vez
-// de inventar una respuesta.
-func isAlive(pid int) (alive bool, checked bool) {
-	if pid <= 0 {
-		return false, true
-	}
-	if runtime.GOOS == "windows" {
-		return false, false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false, true
-	}
-	return proc.Signal(syscall.Signal(0)) == nil, true
-}
+// isAlive confirma si pid sigue vivo — implementación real por SO, separada
+// en isalive_unix.go (señal 0, POSIX) e isalive_windows.go
+// (OpenProcess+GetExitCodeProcess, Win32) — mismo criterio que SetDetached
+// (ver detach_unix.go/detach_windows.go): el build tag elige la
+// implementación correcta en tiempo de compilación, no un
+// `if runtime.GOOS` en tiempo de ejecución.
 
 // Status reconcilia el estado guardado contra si el proceso realmente
 // sigue vivo — si el pid guardado ya no existe, limpia el estado viejo en
@@ -145,11 +132,13 @@ func Status() (State, bool, error) {
 	return s, true, nil
 }
 
-// Stop manda SIGTERM al proceso de fondo (uvicorn lo maneja de forma
-// prolija: es la misma señal que recibiría con Ctrl-C en primer plano) y
-// borra el estado. Igual que internal/plugins.Stop, en Windows el envío de
-// SIGTERM no está soportado por el runtime de Go — no hay una forma
-// confiable de pararlo remotamente todavía ahí.
+// Stop le pide al proceso de fondo que pare y borra el estado — la señal
+// exacta la decide signalStop (isalive_unix.go/isalive_windows.go): en
+// Unix es SIGTERM (uvicorn lo maneja de forma prolija, la misma señal que
+// recibiría con Ctrl-C en primer plano); en Windows es un corte duro
+// (TerminateProcess vía proc.Kill()) — no hay forma verificable sin una
+// máquina Windows real de que un shutdown "prolijo" ahí funcione, así que
+// no se finge esa garantía.
 func Stop() (State, error) {
 	s, alive, err := Status()
 	if err != nil {
@@ -159,7 +148,7 @@ func Stop() (State, error) {
 		return State{}, fmt.Errorf("no hay ningún dashboard local corriendo en segundo plano")
 	}
 	if proc, err := os.FindProcess(s.PID); err == nil {
-		_ = proc.Signal(syscall.SIGTERM)
+		signalStop(proc)
 	}
 	_ = RemoveState()
 	return s, nil

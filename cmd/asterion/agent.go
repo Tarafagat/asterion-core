@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"net/http"
 	"os"
@@ -11,12 +13,16 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf16"
 
 	"github.com/spf13/cobra"
 
 	"asterion-core/internal/cliconfig"
+	"asterion-core/internal/localserve"
 	"asterion-core/internal/localstore"
+	asterionruntime "asterion-core/internal/runtime"
 	"asterion-core/internal/sysinfo"
+	"asterion-core/internal/tunnel"
 )
 
 // agentCmd agrupa el estado LOCAL del servicio del agente — distinto de
@@ -61,7 +67,7 @@ func agentStatusCmd() *cobra.Command {
 			_, hasKey := keys[instance.ID]
 
 			serviceName := "asterion-agent-" + instance.ID + ".service"
-			serviceState := "desconocido (solo Linux/systemd y macOS/launchd por ahora)"
+			serviceState := "desconocido (solo Linux/systemd, macOS/launchd y Windows/Scheduled Tasks por ahora)"
 			if runtime.GOOS == "linux" {
 				if _, err := exec.LookPath("systemctl"); err == nil {
 					out, _ := exec.Command("systemctl", "--user", "is-active", serviceName).Output()
@@ -74,6 +80,10 @@ func agentStatusCmd() *cobra.Command {
 			if runtime.GOOS == "darwin" {
 				serviceName = launchdLabel(instance.ID)
 				serviceState = launchdStatus(serviceName)
+			}
+			if runtime.GOOS == "windows" {
+				serviceName = windowsTaskName(instance.ID)
+				serviceState = schtasksStatus(serviceName)
 			}
 
 			printJSON(map[string]any{
@@ -264,12 +274,16 @@ func removeAgentKey(localID string) {
 }
 
 // installAgentService deja `asterion agent-run --local <id>` corriendo
-// como servicio de usuario — systemd --user en Linux, launchd en macOS. En
-// el resto de los sistemas operativos el llamador debe mostrar el comando
-// manual.
+// como servicio de usuario — systemd --user en Linux, launchd en macOS,
+// Scheduled Task (disparada al iniciar sesión, sin pedir Administrador)
+// en Windows. En el resto de los sistemas operativos el llamador debe
+// mostrar el comando manual.
 func installAgentService(localID string) error {
 	if runtime.GOOS == "darwin" {
 		return installAgentServiceDarwin(localID)
+	}
+	if runtime.GOOS == "windows" {
+		return installAgentServiceWindows(localID)
 	}
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("la instalación automática del servicio todavía solo soporta Linux (systemd --user) y macOS (launchd)")
@@ -340,6 +354,9 @@ WantedBy=default.target
 func uninstallAgentService(localID string) error {
 	if runtime.GOOS == "darwin" {
 		return uninstallAgentServiceDarwin(localID)
+	}
+	if runtime.GOOS == "windows" {
+		return uninstallAgentServiceWindows(localID)
 	}
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("la desinstalación automática del servicio todavía solo soporta Linux (systemd --user) y macOS (launchd)")
@@ -475,6 +492,151 @@ func launchdStatus(label string) string {
 	return "loaded (no corriendo ahora)"
 }
 
+// windowsTaskName es el nombre de la Scheduled Task — mismo patrón que
+// serviceName en Linux ("asterion-agent-<id>", sin el ".service").
+func windowsTaskName(localID string) string {
+	return "asterion-agent-" + localID
+}
+
+// escapeXMLText escapa texto dinámico (ruta del ejecutable, id local)
+// antes de insertarlo en el XML de la Scheduled Task — una ruta de
+// Windows con "&" (ej. un usuario "A&B") rompería el XML sin esto.
+func escapeXMLText(s string) string {
+	var buf bytes.Buffer
+	_ = xml.EscapeText(&buf, []byte(s))
+	return buf.String()
+}
+
+// writeUTF16LEFile escribe content codificado en UTF-16LE con BOM — el
+// formato que usa nativamente el propio Task Scheduler de Windows (lo que
+// devuelve `schtasks /query /XML`), a diferencia de JSON/YAML en el resto
+// de este repo, que siempre es UTF-8 plano. Sin poder confirmarlo en una
+// máquina Windows real, este es el formato documentado como el que
+// `schtasks /create /XML` espera de forma confiable — no vale la pena
+// arriesgar un UTF-8 que tal vez funcione.
+func writeUTF16LEFile(path, content string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	if _, err := f.Write([]byte{0xFF, 0xFE}); err != nil { // BOM
+		return err
+	}
+	for _, unit := range utf16.Encode([]rune(content)) {
+		if err := binary.Write(f, binary.LittleEndian, unit); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// installAgentServiceWindows es el equivalente Windows de
+// installAgentServiceDarwin/installAgentService: una Scheduled Task
+// disparada al iniciar sesión (LogonTrigger) en vez de un servicio de
+// sistema — no pide Administrador, mismo espíritu que "systemd --user"/
+// launchd (ver el comentario en internal/runtime/config.go sobre por qué
+// nunca root). El XML de definición solo hace falta durante el propio
+// `schtasks /create` (a diferencia del unit file/plist, que SON el
+// servicio persistente) — se borra apenas termina.
+func installAgentServiceWindows(localID string) error {
+	if _, err := exec.LookPath("schtasks"); err != nil {
+		return fmt.Errorf("no se encontró schtasks")
+	}
+
+	exePath, err := os.Executable()
+	if err != nil {
+		return err
+	}
+
+	taskName := windowsTaskName(localID)
+	xmlDef := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <Triggers>
+    <LogonTrigger>
+      <Enabled>true</Enabled>
+    </LogonTrigger>
+  </Triggers>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RestartOnFailure>
+      <Interval>PT1M</Interval>
+      <Count>999</Count>
+    </RestartOnFailure>
+  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>%s</Command>
+      <Arguments>agent-run --local %s</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+`, escapeXMLText(exePath), escapeXMLText(localID))
+
+	tmpFile, err := os.CreateTemp("", "asterion-agent-task-*.xml")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmpFile.Name()
+	_ = tmpFile.Close()
+	defer os.Remove(tmpPath)
+	if err := writeUTF16LEFile(tmpPath, xmlDef); err != nil {
+		return err
+	}
+
+	if out, err := exec.Command("schtasks", "/create", "/TN", taskName, "/XML", tmpPath, "/F").CombinedOutput(); err != nil {
+		return fmt.Errorf("schtasks /create: %w (%s)", err, out)
+	}
+
+	// 'end' silencioso (por si ya corría de antes, ej. reinstalación) +
+	// 'run' para forzar que arranque ahora — mismo motivo que 'restart' en
+	// vez de 'start' en la versión Linux (ver el comentario en
+	// installAgentService): sin esto, una instancia vieja ya en memoria
+	// seguiría con la api-key vieja después de una reconexión.
+	_ = exec.Command("schtasks", "/end", "/TN", taskName).Run()
+	if out, err := exec.Command("schtasks", "/run", "/TN", taskName).CombinedOutput(); err != nil {
+		return fmt.Errorf("schtasks /run: %w (%s)", err, out)
+	}
+	return nil
+}
+
+// uninstallAgentServiceWindows es el equivalente de uninstallAgentService
+// pero con schtasks. No falla si la tarea nunca se había instalado (mismo
+// criterio que la versión Linux/macOS): /end y /delete sobre algo
+// inexistente solo se ignoran.
+func uninstallAgentServiceWindows(localID string) error {
+	if _, err := exec.LookPath("schtasks"); err != nil {
+		return fmt.Errorf("no se encontró schtasks")
+	}
+	taskName := windowsTaskName(localID)
+	_ = exec.Command("schtasks", "/end", "/TN", taskName).Run()
+	_ = exec.Command("schtasks", "/delete", "/TN", taskName, "/F").Run()
+	return nil
+}
+
+// schtasksStatus consulta `schtasks /query /TN <name> /FO LIST /V` y
+// busca la línea "Status:" — mismo criterio best-effort que
+// launchdStatus. Limitación conocida y no verificable sin una máquina
+// Windows real: en un Windows con idioma distinto del inglés, esa
+// etiqueta puede venir traducida (ej. "Estado:" en español) — en ese caso
+// esto cae a "desconocido" en vez de romper, nunca inventa un valor.
+func schtasksStatus(taskName string) string {
+	out, err := exec.Command("schtasks", "/query", "/TN", taskName, "/FO", "LIST", "/V").Output()
+	if err != nil {
+		return "no instalado"
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "Status:") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "Status:"))
+		}
+	}
+	return "desconocido"
+}
+
 // agentVersion se manda en cada heartbeat — Asterion Cloud lo muestra en el
 // panel del agente y lo compara contra versiones disponibles (spec §49).
 // Sin un mecanismo de release todavía, queda fijo acá a mano por ahora.
@@ -538,7 +700,21 @@ func agentRunCmd() *cobra.Command {
 // ver POST /agent/heartbeat. Cloud calcula ONLINE/OFFLINE/STALE a partir
 // de cuándo llegó el último de estos, no de las métricas.
 func reportHeartbeat(apiBaseURL, apiKey string) error {
-	body, _ := json.Marshal(map[string]any{"agent_version": agentVersion})
+	payload := map[string]any{"agent_version": agentVersion}
+
+	// report_local_serve (ver internal/runtime/config.go) está apagado por
+	// default — nada de esto se manda a Cloud hasta que el usuario lo
+	// prenda a mano ('asterion local config set report_local_serve true').
+	if cfg, err := asterionruntime.LoadConfig(); err == nil && cfg.ReportLocalServe {
+		if state, running, _ := localserve.Status(); running {
+			payload["local_serve_port"] = state.Port
+		}
+		if tstate, running, _ := tunnel.Status(); running && tstate.URL != "" {
+			payload["tunnel_url"] = tstate.URL
+		}
+	}
+
+	body, _ := json.Marshal(payload)
 	req, err := http.NewRequest(http.MethodPost, apiBaseURL+"/agent/heartbeat", bytes.NewReader(body))
 	if err != nil {
 		return err

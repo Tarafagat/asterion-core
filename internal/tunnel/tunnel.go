@@ -11,8 +11,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
-	"syscall"
 	"time"
 )
 
@@ -104,19 +102,8 @@ func LoadState() (State, bool, error) {
 	return s, true, nil
 }
 
-func isAlive(pid int) (alive bool, checked bool) {
-	if pid <= 0 {
-		return false, true
-	}
-	if runtime.GOOS == "windows" {
-		return false, false
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false, true
-	}
-	return proc.Signal(syscall.Signal(0)) == nil, true
-}
+// isAlive: implementación real por SO, separada en isalive_unix.go/
+// isalive_windows.go — mismo criterio que internal/localserve.
 
 // Status reconcilia el estado guardado contra si el proceso realmente
 // sigue vivo — si el pid guardado ya no existe, limpia el estado viejo.
@@ -133,7 +120,10 @@ func Status() (State, bool, error) {
 	return s, true, nil
 }
 
-// Stop manda SIGTERM al proceso de cloudflared y borra el estado.
+// Stop le pide al proceso de cloudflared que pare y borra el estado —
+// signalStop (isalive_unix.go/isalive_windows.go) decide SIGTERM (Unix) o
+// un corte duro vía TerminateProcess (Windows, sin garantía de shutdown
+// prolijo verificable ahí).
 func Stop() (State, error) {
 	s, alive, err := Status()
 	if err != nil {
@@ -143,7 +133,7 @@ func Stop() (State, error) {
 		return State{}, fmt.Errorf("no hay ningún túnel corriendo en segundo plano")
 	}
 	if proc, err := os.FindProcess(s.PID); err == nil {
-		_ = proc.Signal(syscall.SIGTERM)
+		signalStop(proc)
 	}
 	_ = RemoveState()
 	return s, nil

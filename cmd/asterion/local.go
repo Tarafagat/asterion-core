@@ -30,7 +30,7 @@ func localCmd() *cobra.Command {
 		Use:   "local",
 		Short: "Preguntas sobre esta máquina: qué es y cuánto está usando (datos crudos, sin costo)",
 	}
-	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localRestartCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd(), localTunnelCmd())
+	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localRestartCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd(), localTunnelCmd(), localRouteCmd())
 	return root
 }
 
@@ -209,6 +209,8 @@ func getConfigKey(cfg runtime.Config, key string) (string, error) {
 		return strconv.Itoa(cfg.HeartbeatInterval), nil
 	case "remote_management_enabled":
 		return strconv.FormatBool(cfg.RemoteManagement), nil
+	case "report_local_serve":
+		return strconv.FormatBool(cfg.ReportLocalServe), nil
 	default:
 		return "", fmt.Errorf("clave desconocida: %q", key)
 	}
@@ -256,6 +258,12 @@ func setConfigKey(cfg *runtime.Config, key, value string) error {
 			return err
 		}
 		cfg.RemoteManagement = b
+	case "report_local_serve":
+		b, err := strconv.ParseBool(value)
+		if err != nil {
+			return err
+		}
+		cfg.ReportLocalServe = b
 	default:
 		return fmt.Errorf("clave desconocida: %q", key)
 	}

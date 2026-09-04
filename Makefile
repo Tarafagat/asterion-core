@@ -4,6 +4,16 @@
 # escribirla a mano en ningún lado ni mantener un archivo VERSION aparte.
 
 BINARY  := asterion
+# $(OS) es una variable de entorno que Windows define nativamente como
+# "Windows_NT" — visible tal cual dentro de Git Bash/MSYS2/WSL (no hace
+# falta 'uname'). Se usa acá para las dos diferencias reales que importan
+# para build/install: la extensión .exe, y que no hay equivalente a
+# /usr/local/bin en Windows (ver el target 'install' más abajo).
+ifeq ($(OS),Windows_NT)
+  BIN := $(BINARY).exe
+else
+  BIN := $(BINARY)
+endif
 # Saca "vX.Y" (o "vX.Y.Z") del prefijo "VX.Y ..." del mensaje del último
 # commit — la convención informal de versionado que ya se usa en los
 # commits de este repo y del resto del ecosistema (no hay releases
@@ -72,9 +82,9 @@ check-go:
 .PHONY: build
 build: check-go prerequirements
 ifeq ($(VERSION),)
-	go build -o $(BINARY) ./cmd/asterion
+	go build -o $(BIN) ./cmd/asterion
 else
-	go build -ldflags "-X main.version=$(VERSION)" -o $(BINARY) ./cmd/asterion
+	go build -ldflags "-X main.version=$(VERSION)" -o $(BIN) ./cmd/asterion
 endif
 
 .PHONY: version
@@ -114,9 +124,33 @@ ifeq ($(VERSION),)
 else
 	go install -ldflags "-X main.version=$(VERSION)" ./cmd/asterion
 endif
-	@installed="$$(go env GOPATH)/bin/$(BINARY)"; \
+ifeq ($(OS),Windows_NT)
+	@installed="$$(go env GOPATH)/bin/$(BIN)"; \
 	echo "✓ instalado en $$installed"; \
-	target=/usr/local/bin/$(BINARY); \
+	gopathbin="$$(go env GOPATH)/bin"; \
+	case ":$$PATH:" in \
+		*":$$gopathbin:"*) \
+			echo "✓ $$gopathbin ya está en tu \$$PATH — no hace falta nada más."; \
+			;; \
+		*) \
+			echo "⚠ $$gopathbin todavía no está en tu \$$PATH."; \
+			echo "  Agregalo una vez, sin necesitar Administrador, desde cmd.exe o PowerShell:"; \
+			echo "    setx PATH \"%PATH%;$$gopathbin\""; \
+			echo "  y abrí una terminal nueva después — setx no actualiza la sesión ya abierta."; \
+			;; \
+	esac; \
+	echo ""; \
+	echo "  Nota Windows: si 'go install' de arriba falló con algo como \"The process cannot"; \
+	echo "  access the file because it is being used by another process\", es porque"; \
+	echo "  $(BIN) ya está corriendo (el agente, instalado como Scheduled Task — ver"; \
+	echo "  'asterion agent status' para el nombre exacto). A diferencia de Unix, Windows no deja"; \
+	echo "  sobreescribir un .exe en uso ni con rename — pará la tarea primero"; \
+	echo "  ('schtasks /end /TN <nombre>'), volvé a correr 'make install', y reinstalala con"; \
+	echo "  'asterion agent restart' una vez que el build nuevo esté en su lugar."
+else
+	@installed="$$(go env GOPATH)/bin/$(BIN)"; \
+	echo "✓ instalado en $$installed"; \
+	target=/usr/local/bin/$(BIN); \
 	tmp="$$target.new"; \
 	if [ -w /usr/local/bin ]; then \
 		cp "$$installed" "$$tmp" && mv -f "$$tmp" "$$target" && copied=1 || copied=0; \
@@ -124,19 +158,20 @@ endif
 		sudo sh -c "cp '$$installed' '$$tmp' && mv -f '$$tmp' '$$target'" && copied=1 || copied=0; \
 	fi; \
 	if [ "$$copied" = "1" ]; then \
-		echo "✓ copiado a /usr/local/bin/$(BINARY) (ya está en el \$$PATH de cualquier shell, sin configurar nada)"; \
+		echo "✓ copiado a /usr/local/bin/$(BIN) (ya está en el \$$PATH de cualquier shell, sin configurar nada)"; \
 		echo "  Si tu shell actual venía arrastrando otro 'asterion' de antes, corré 'hash -r' (bash/zsh)"; \
 		echo "  para que olvide la ruta vieja — o abrí una terminal nueva."; \
 	else \
-		echo "⚠ NO se pudo copiar a /usr/local/bin/$(BINARY) (sudo necesita una terminal interactiva"; \
+		echo "⚠ NO se pudo copiar a /usr/local/bin/$(BIN) (sudo necesita una terminal interactiva"; \
 		echo "  para la contraseña, y este Makefile no la tiene acá) — corré esto a mano:"; \
 		echo "    sudo sh -c \"cp $$installed $$tmp && mv -f $$tmp $$target\""; \
 		echo "  (no 'sudo cp' directo: si 'asterion' ya está corriendo desde ahí, un cp directo"; \
 		echo "  falla con \"Text file busy\" — ver el comentario arriba de este target)"; \
 	fi; \
-	resolved="$$(command -v $(BINARY) 2>/dev/null)"; \
-	if [ -n "$$resolved" ] && [ "$$resolved" != "$$installed" ] && [ "$$resolved" != "/usr/local/bin/$(BINARY)" ]; then \
+	resolved="$$(command -v $(BIN) 2>/dev/null)"; \
+	if [ -n "$$resolved" ] && [ "$$resolved" != "$$installed" ] && [ "$$resolved" != "/usr/local/bin/$(BIN)" ]; then \
 		echo ""; \
-		echo "⚠ Además, '$(BINARY)' en tu \$$PATH resuelve a $$resolved — un TERCER binario,"; \
+		echo "⚠ Además, '$(BIN)' en tu \$$PATH resuelve a $$resolved — un TERCER binario,"; \
 		echo "  distinto de los dos que se acaban de actualizar. Revisá qué es esa ruta."; \
 	fi
+endif
