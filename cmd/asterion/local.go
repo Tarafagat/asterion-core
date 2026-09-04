@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"time"
 
@@ -287,8 +288,9 @@ func localServeCmd() *cobra.Command {
 		Use:   "serve",
 		Short: "Levantar el dashboard local (backend-core + frontend-core) con un token propio, sin Google/Firebase",
 		Long: "Arranca backend-core (Python/FastAPI) en un puerto libre, sirviendo su mini API y el\n" +
-			"dashboard de frontend-core. Si backend-core/venv no existe todavía, se crea solo (python3 -m\n" +
-			"venv venv && venv/bin/pip install -r requirements.txt) — no hace falta prepararlo a mano.\n" +
+			"dashboard de frontend-core. Si backend-core/venv no existe todavía, se crea solo (python3/python\n" +
+			"-m venv venv, e instala requirements.txt con el pip de ese venv) — no hace falta prepararlo a\n" +
+			"mano en ningún sistema operativo (Linux/macOS/Windows).\n" +
 			"frontend-core sí necesita estar compilado por separado (pnpm build) — ver asterion-core/README.md.\n\n" +
 			"El login ya no usa Google/Firebase: la primera vez que corrés esto se genera un token\n" +
 			"propio (ver internal/localauth) que se imprime UNA sola vez acá abajo — pegalo en el\n" +
@@ -345,7 +347,7 @@ func localServeCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "Ruta a asterion-core/backend-core (default: la busca en ubicaciones comunes)")
 	cmd.Flags().IntVar(&port, "port", 0, "Puerto fijo (default: el sistema elige uno libre)")
-	cmd.Flags().StringVar(&pythonBin, "python", "", "Intérprete de Python 3 a usar si hay que crear el venv (default: 'python3' del PATH)")
+	cmd.Flags().StringVar(&pythonBin, "python", "", "Intérprete de Python 3 a usar si hay que crear el venv (default: 'python3' del PATH, o 'python' si es Windows y no hay 'python3')")
 	cmd.Flags().BoolVarP(&background, "background", "b", false, "Dejarlo corriendo en segundo plano en vez de bloquear la terminal")
 	return cmd
 }
@@ -539,7 +541,7 @@ func localRestartCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "Ruta a asterion-core/backend-core (default: la busca en ubicaciones comunes)")
 	cmd.Flags().IntVar(&port, "port", 0, "Puerto fijo a la fuerza (default: reusar el de antes si estaba corriendo, si no el que el sistema elija)")
-	cmd.Flags().StringVar(&pythonBin, "python", "", "Intérprete de Python 3 a usar si hay que crear el venv (default: 'python3' del PATH)")
+	cmd.Flags().StringVar(&pythonBin, "python", "", "Intérprete de Python 3 a usar si hay que crear el venv (default: 'python3' del PATH, o 'python' si es Windows y no hay 'python3')")
 	return cmd
 }
 
@@ -565,18 +567,57 @@ func waitForPortFree(port int, timeout time.Duration) {
 // instalado. pythonBin es el intérprete a usar SOLO para crear el venv
 // (una vez creado, siempre se usa el de adentro del venv, nunca el del
 // sistema, para no mezclar paquetes).
+// venvBinDir/venvExe: el layout interno de un venv de Python difiere por
+// SO — 'bin/python'+'bin/pip' en Linux/macOS, 'Scripts\python.exe'+
+// 'Scripts\pip.exe' en Windows (así es como el propio módulo venv de
+// Python los crea, no una convención de Asterion). Go tiene que preguntar
+// el SO real (goruntime.GOOS) en vez de asumir Unix — antes de esto,
+// 'local serve' en Windows nunca encontraba el venv ya creado (por
+// buscarlo en 'bin/python', que ahí no existe) y volvía a intentar
+// crearlo/instalar dependencias en cada corrida.
+func venvBinDir() string {
+	if goruntime.GOOS == "windows" {
+		return "Scripts"
+	}
+	return "bin"
+}
+
+func venvExe(name string) string {
+	if goruntime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
+}
+
+// defaultPythonBin: 'python3' es el nombre estándar en Linux/macOS, pero
+// el instalador oficial de Python para Windows (python.org) solo agrega
+// 'python.exe' al PATH, no 'python3.exe' — sin este chequeo, 'local
+// serve' fallaba ahí con "no encontré python3" aunque Python sí estuviera
+// instalado. Si 'python3' SÍ está (ej. instalado vía algún gestor de
+// paquetes que lo provee), se sigue prefiriendo — el fallback a 'python'
+// es solo para cuando no está.
+func defaultPythonBin() string {
+	if goruntime.GOOS == "windows" {
+		if _, err := exec.LookPath("python3"); err == nil {
+			return "python3"
+		}
+		return "python"
+	}
+	return "python3"
+}
+
 func ensureBackendCoreVenv(backendCoreDir, pythonBin string) (string, error) {
 	venvDir := filepath.Join(backendCoreDir, "venv")
-	venvPython := filepath.Join(venvDir, "bin", "python")
+	venvPython := filepath.Join(venvDir, venvBinDir(), venvExe("python"))
 	if _, err := os.Stat(venvPython); err == nil {
 		return venvPython, nil
 	}
 
 	if pythonBin == "" {
-		pythonBin = "python3"
+		pythonBin = defaultPythonBin()
 	}
 	if _, err := exec.LookPath(pythonBin); err != nil {
-		return "", fmt.Errorf("no encontré %q en el PATH para crear el entorno virtual de backend-core — instalá Python 3 o pasá --python /ruta/a/tu/python3", pythonBin)
+		return "", fmt.Errorf("no encontré %q en el PATH para crear el entorno virtual de backend-core — instalá Python 3 o pasá --python con la ruta a tu intérprete", pythonBin)
 	}
 
 	fmt.Printf("No encontré backend-core/venv — creándolo con %s...\n", pythonBin)
@@ -588,7 +629,7 @@ func ensureBackendCoreVenv(backendCoreDir, pythonBin string) (string, error) {
 	}
 
 	fmt.Println("Instalando dependencias (requirements.txt) — puede tardar un minuto la primera vez...")
-	install := exec.Command(filepath.Join(venvDir, "bin", "pip"), "install", "-r", "requirements.txt")
+	install := exec.Command(filepath.Join(venvDir, venvBinDir(), venvExe("pip")), "install", "-r", "requirements.txt")
 	install.Dir = backendCoreDir
 	install.Stdout = os.Stdout
 	install.Stderr = os.Stderr
