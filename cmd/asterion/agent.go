@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"encoding/xml"
@@ -18,6 +19,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"asterion-core/internal/cliconfig"
+	"asterion-core/internal/cloudmeta"
 	"asterion-core/internal/localserve"
 	"asterion-core/internal/localstore"
 	asterionruntime "asterion-core/internal/runtime"
@@ -712,6 +714,17 @@ func agentRunCmd() *cobra.Command {
 
 			fmt.Printf("Reportando métricas de %q a %s cada %s (heartbeat cada %s)\n", localID, cfg.APIBaseURL, interval, heartbeatInterval)
 
+			// Detección de identidad cloud (GCP/AWS/Azure/OCI) — UNA sola vez
+			// acá, no en cada heartbeat: si esta máquina no está en ninguna
+			// nube soportada (server privado/bare-metal), cloudmeta.Detect
+			// tarda como máximo ~3s en total (4 intentos con timeout corto) y
+			// devuelve Identity{} vacío — after eso, cada heartbeat es tan
+			// liviano como siempre, sin volver a probar nada.
+			identity := cloudmeta.Detect(context.Background())
+			if identity.Provider != "" {
+				fmt.Printf("Detectado: corriendo en %s (id nativo: %s)\n", identity.Provider, identity.NativeID)
+			}
+
 			// Heartbeat y métricas son dos ciclos independientes (spec §24):
 			// el heartbeat es más frecuente y liviano, así Cloud sabe "sigo
 			// vivo" sin depender de que en ese momento haya métricas nuevas.
@@ -719,7 +732,7 @@ func agentRunCmd() *cobra.Command {
 				ticker := time.NewTicker(heartbeatInterval)
 				defer ticker.Stop()
 				for {
-					if err := reportHeartbeat(cfg.APIBaseURL, apiKey); err != nil {
+					if err := reportHeartbeat(cfg.APIBaseURL, apiKey, identity); err != nil {
 						fmt.Fprintln(os.Stderr, "agente (heartbeat):", err)
 					}
 					<-ticker.C
@@ -748,7 +761,7 @@ func agentRunCmd() *cobra.Command {
 // reportHeartbeat le dice a Cloud "sigo vivo", separado de las métricas —
 // ver POST /agent/heartbeat. Cloud calcula ONLINE/OFFLINE/STALE a partir
 // de cuándo llegó el último de estos, no de las métricas.
-func reportHeartbeat(apiBaseURL, apiKey string) error {
+func reportHeartbeat(apiBaseURL, apiKey string, identity cloudmeta.Identity) error {
 	payload := map[string]any{"agent_version": agentVersion}
 
 	// report_local_serve (ver internal/runtime/config.go) está apagado por
@@ -761,6 +774,14 @@ func reportHeartbeat(apiBaseURL, apiKey string) error {
 		if tstate, running, _ := tunnel.Status(); running && tstate.URL != "" {
 			payload["tunnel_url"] = tstate.URL
 		}
+	}
+
+	// Identidad cloud (ver internal/cloudmeta) — nunca se manda nada acá si
+	// no se detectó ningún proveedor (server privado/bare-metal): el body
+	// queda exactamente igual que antes de esta feature.
+	if identity.Provider != "" {
+		payload["cloud_provider"] = identity.Provider
+		payload["cloud_native_id"] = identity.NativeID
 	}
 
 	body, _ := json.Marshal(payload)
