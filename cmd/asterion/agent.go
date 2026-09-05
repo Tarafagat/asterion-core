@@ -21,6 +21,7 @@ import (
 	"asterion-core/internal/localserve"
 	"asterion-core/internal/localstore"
 	asterionruntime "asterion-core/internal/runtime"
+	"asterion-core/internal/secretbox"
 	"asterion-core/internal/sysinfo"
 	"asterion-core/internal/tunnel"
 )
@@ -203,6 +204,26 @@ func agentKeysPath() (string, error) {
 	return filepath.Join(dir, "agent-keys.json"), nil
 }
 
+// agentKeysKeyPath es la clave AES propia de agent-keys.json — archivo
+// hermano, mismo criterio que internal/secretbox ya documenta ("cada
+// caller elige dónde vive su propia clave"): no comparte clave con
+// internal/plugins ni con ningún otro subsistema.
+func agentKeysKeyPath() (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(base, "asterion", "agent-keys.key"), nil
+}
+
+func secretboxKey() ([]byte, error) {
+	path, err := agentKeysKeyPath()
+	if err != nil {
+		return nil, err
+	}
+	return secretbox.EnsureKey(path)
+}
+
 func loadAgentKeys() (map[string]string, error) {
 	path, err := agentKeysPath()
 	if err != nil {
@@ -222,12 +243,24 @@ func loadAgentKeys() (map[string]string, error) {
 	return keys, nil
 }
 
+// saveAgentKey guarda rawKey cifrado con internal/secretbox — nunca en
+// texto plano en agent-keys.json (permisos 0600 no alcanza por sí solo:
+// cualquier backup/sync/otro proceso con el mismo usuario del SO podría
+// leerlo igual).
 func saveAgentKey(localID, rawKey string) error {
 	keys, err := loadAgentKeys()
 	if err != nil {
 		return err
 	}
-	keys[localID] = rawKey
+	key, err := secretboxKey()
+	if err != nil {
+		return err
+	}
+	encrypted, err := secretbox.Encrypt(key, rawKey)
+	if err != nil {
+		return err
+	}
+	keys[localID] = encrypted
 	path, err := agentKeysPath()
 	if err != nil {
 		return err
@@ -239,16 +272,32 @@ func saveAgentKey(localID, rawKey string) error {
 	return os.WriteFile(path, data, 0o600)
 }
 
+// loadAgentKey descifra el valor guardado. Retrocompatibilidad: una
+// instalación de antes de este cambio tiene agent-keys.json en texto
+// plano — si Decrypt falla, se usa el valor tal cual (era la clave cruda
+// todo este tiempo) y de paso se re-guarda ya cifrado, migrando esa
+// entrada sola, sin pedirle nada al usuario ni requerir un comando aparte.
 func loadAgentKey(localID string) (string, error) {
 	keys, err := loadAgentKeys()
 	if err != nil {
 		return "", err
 	}
-	key, ok := keys[localID]
+	stored, ok := keys[localID]
 	if !ok {
 		return "", fmt.Errorf("no hay una clave de agente guardada para %q — corré 'asterion cloud connect' o 'asterion cloud install-agent' primero", localID)
 	}
-	return key, nil
+	key, err := secretboxKey()
+	if err != nil {
+		return "", err
+	}
+	if plain, decErr := secretbox.Decrypt(key, stored); decErr == nil {
+		return plain, nil
+	}
+	// Legacy en texto plano — se usa igual, y se re-guarda cifrado para
+	// la próxima vez. Si el re-guardado falla, no bloquea el uso de la
+	// clave ahora mismo.
+	_ = saveAgentKey(localID, stored)
+	return stored, nil
 }
 
 // removeAgentKey borra la clave local guardada para localID, si existe.
