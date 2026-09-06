@@ -14,6 +14,7 @@ import (
 
 	"asterion-core/internal/localauth"
 	"asterion-core/internal/localserve"
+	"asterion-core/internal/osuser"
 	"asterion-core/internal/plugins"
 	"asterion-core/internal/runtime"
 	"asterion-core/internal/safety"
@@ -31,7 +32,7 @@ func localCmd() *cobra.Command {
 		Use:   "local",
 		Short: "Preguntas sobre esta máquina: qué es y cuánto está usando (datos crudos, sin costo)",
 	}
-	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localRestartCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd(), localTunnelCmd(), localRouteCmd())
+	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localRestartCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd(), localTunnelCmd(), localRouteCmd(), localUserCmd())
 	return root
 }
 
@@ -60,6 +61,7 @@ func localStatusCmd() *cobra.Command {
 				"ssh":                 runtime.DiscoverSSH(),
 				"network":             runtime.DiscoverNetwork(),
 				"safety_capabilities": safetyCapabilities(),
+				"os_user_support":     osuser.SupportStatus(),
 			})
 			return nil
 		},

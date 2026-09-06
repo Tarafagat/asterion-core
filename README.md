@@ -147,6 +147,14 @@ Puntos clave de diseño:
   de Asterion Cloud (`PRICING_REFRESH_MINUTES`, default 60) y cachea el
   resultado en disco — funciona offline entre refrescos, y mejor con
   sesión.
+- **Tab "Usuarios"**: crear/listar/quitar usuarios del sistema operativo
+  de esta misma máquina desde el navegador, sin terminal — mismo motor y
+  mismos 3 niveles que `asterion local user` (ver "Aprovisionamiento de
+  usuarios de sistema" más abajo), vía un puente nuevo
+  (`backend-core/app/osuser_bridge.py`) que le pide al binario `asterion`
+  exactamente lo mismo que correrías a mano, con `--json`. Si la máquina
+  no es Debian/Ubuntu o el proceso no corre como root, el tab explica el
+  motivo exacto en vez de dejar que el primer intento falle sin contexto.
 
 ### Requisitos
 
@@ -568,6 +576,34 @@ asterion cloud disconnect <nombre-local> --project <slug>       # desvincula del
 asterion cloud uninstall-agent <nombre-local> --project <slug>  # revoca en Cloud + desinstala el servicio local
 ```
 
+**Identidad cloud, detectada una sola vez al arrancar.** Antes de entrar a
+los dos loops de arriba, el agente prueba (`internal/cloudmeta`, ~800ms
+de timeout por intento) los servicios de metadata de GCP/AWS/Azure/OCI —
+si detecta uno, lo manda en cada heartbeat (`cloud_provider`/
+`cloud_native_id`); si no detecta ninguno (server privado/bare-metal), no
+manda nada nuevo y el agente sigue funcionando exactamente igual que
+siempre. Con eso, si esa misma máquina ya estaba conectada por agente
+ANTES de conectar la cuenta cloud a Asterion, el descubrimiento de
+recursos por cuenta cloud la reconoce y ofrece **vincular en vez de
+duplicar** — ver `asterion-cloud/README.md` § Motor de aprovisionamiento
+multi-nube.
+
+**El heartbeat ahora es de dos vías.** Su respuesta puede traer
+`pending_jobs` — órdenes que Asterion Cloud dejó esperando para esta
+instancia puntual (hoy, el único tipo es `os_user_manage`, ver
+"Aprovisionamiento de usuarios de sistema" más arriba). El agente no
+tiene ningún puerto propio abierto, así que nunca hay un canal nuevo que
+abrir: se aprovecha el propio polling del heartbeat, que ya corre cada
+30s. Cada job se ejecuta con el mismo motor (`internal/osuser`) que usa
+`asterion local user` — nunca una reimplementación — y el resultado se
+reporta a `POST /agent/jobs/{id}/result`. Un agente viejo que todavía no
+sabe leer `pending_jobs` simplemente lo ignora (antes la respuesta era
+`204` sin body; ahora es `200` con esa lista, vacía en el caso normal) —
+100% retrocompatible. Que Cloud pueda de verdad despachar un job para una
+instancia puntual depende de que el proyecto lo haya habilitado
+explícitamente para ella (ver "rol del agente" en
+`asterion-cloud/README.md`) — nada llega por default.
+
 ## Plugins de terceros
 
 Cualquiera puede publicar en GitHub una integración para Asterion sin tocar
@@ -833,13 +869,63 @@ hacían los Provider Adapters de nube con `internal/capabilities`:
 asterion local status   # incluye "safety_capabilities" por adapter
 ```
 
-Hoy los 4 (`ufw`, `ssh`, `reverse-proxy`, `tunnel`) declaran únicamente
-`detect`/`inspect`/`plan` — `apply`/`verify`/`rollback` están ausentes del
-mapa (no en `false`: ausentes, para que quede explícito en el JSON que ni
-se intentaron). La regla dura, en código, no solo en comentario:
-`safety.RequireSafeApply()` rechaza cualquier intento de `apply` si el
-adapter no declaró también `rollback` — un adapter nunca puede aplicar un
-cambio que no sepa deshacer.
+4 de los 5 adapters (`ufw`, `ssh`, `reverse-proxy`, `tunnel`) declaran
+únicamente `detect`/`inspect`/`plan` — `apply`/`verify`/`rollback` están
+ausentes del mapa (no en `false`: ausentes, para que quede explícito en
+el JSON que ni se intentaron). La regla dura, en código, no solo en
+comentario: `safety.RequireSafeApply()` rechaza cualquier intento de
+`apply` si el adapter no declaró también `rollback` — un adapter nunca
+puede aplicar un cambio que no sepa deshacer. El quinto,
+`osuser` (ver más abajo), es el primero que declara los 6 de verdad.
+
+### Aprovisionamiento de usuarios de sistema (`asterion local user`)
+
+El problema que esto resuelve: crear una instancia con Asterion (en
+cualquier proveedor) no dejaba ninguna forma uniforme de crear un usuario
+del sistema operativo dentro de ella — había que entrar por SSH a mano, y
+cada proveedor/distro puede tener matices distintos de `useradd`/sudo.
+`internal/osuser` es el motor único (Go, sin dependencias nuevas — hasta
+la generación de claves SSH es `crypto/ed25519` puro) que resuelve esto
+siempre igual: crear el usuario, instalar su clave SSH, agregarlo a
+grupos, configurar sudo, y devolver un resultado estructurado.
+
+```bash
+asterion local user create deploy --level admin --generate-key
+# CURRENT STATE / PROPOSED CHANGE (mismo formato que 'firewall plan') — pide confirmar antes de aplicar
+asterion local user list
+asterion local user remove deploy
+```
+
+- **3 niveles fijos v1** (sin editor de políticas custom todavía):
+  `admin` (grupo `sudo`, sudo sin contraseña), `operador` (grupo `docker`,
+  sudo limitado a `systemctl restart/status`/`journalctl`), `solo_lectura`
+  (sin sudo). Asume Debian/Ubuntu — otra distro devuelve un error
+  explícito en vez de adivinar nombres de grupo.
+- **`OSUserAdapter` es el primer adapter de `internal/safety` que declara
+  `apply` Y `rollback` de verdad.** Cada `Apply` calcula y guarda un
+  `Diff` exacto (qué grupos agregó, si el usuario ya existía, la línea de
+  SSH que instaló); `Rollback` revierte **exactamente eso** — si el
+  usuario ya existía antes, nunca se borra, solo se le saca lo que este
+  comando le agregó; si es nuevo, se borra entero (`userdel -r`) incluido
+  el drop-in de `/etc/sudoers.d/`, que `userdel` por sí solo no toca (bug
+  real encontrado y corregido durante la verificación de esta feature).
+- Nunca escribe un `/etc/sudoers.d/*` sin pasar antes por `visudo -c` — si
+  la regla generada no valida, no se instala nada.
+- `asterion local status` suma `os_user_support: {supported, reason}` —
+  el único chequeo *en vivo* de si ESTA máquina puede de verdad
+  administrar usuarios (distro soportada + corriendo como root), a
+  diferencia de `safety_capabilities` (que declara qué sabe hacer el
+  código, siempre igual sin importar la máquina).
+- **Mismo motor, tres caminos de entrada**: acá mismo (`asterion local
+  user`, en la propia instancia), por SSH desde Asterion Cloud (una
+  reimplementación en Python del mismo contrato de `Diff`, ver
+  `asterion-cloud/backend/app/services/osuser_service.py`), o por el
+  Agent remoto (ver "El Agent" más abajo) — nunca una lógica distinta
+  según quién lo pida.
+- Probado en vivo contra contenedores Debian descartables (nunca contra
+  una máquina real): creación admin/operador, con clave pegada y
+  generada, rollback exacto de un usuario preexistente vs. uno nuevo, y
+  el pipeline completo del Agent (ver abajo) de punta a punta.
 
 ### Asterion Lab (`asterion lab ...` / `asterion vm ...` / `asterion container ...` / `asterion images ...`)
 
@@ -1159,21 +1245,28 @@ quedó así.
 
 Los 5 adapters (AWS/Azure/GCP/OCI/Vercel) declaran capabilities reales y
 están 100% cableados end-to-end (CLI → API de Asterion → asterion-core →
-adapter). AWS/Azure/GCP/OCI no llaman todavía al SDK real del proveedor
-— cada método `Create*` y `List*` (descubrimiento de recursos existentes,
+adapter). AWS/Azure/OCI no llaman todavía al SDK real del proveedor —
+cada método `Create*` y `List*` (descubrimiento de recursos existentes,
 ver capability `Discovery`) devuelve `adapters.ErrNotImplemented`. No hay
 credenciales reales de esos proveedores disponibles para probar esa
 integración de punta a punta, y publicar una llamada real sin poder
-probarla es peor que no tenerla. Vercel es la primera excepción parcial:
-`ListInstances` sí llama a su API real (`GET /v9/projects`, ver
-`internal/adapters/vercel`) — el resto de sus métodos (`CreateInstance` y
-las otras tres `List*`) siguen `ErrNotImplemented`, mismo criterio que
-los demás, porque Vercel no tiene VPCs/bases de datos gestionadas/buckets
-en el sentido que modela este contrato, y su pricing real (facturación
-por uso, no por cpu/ram) tampoco está integrado. El contrato
-(`ProviderAdapter`, specs, capabilities) ya está listo para que esa
-implementación se agregue adapter por adapter sin tocar nada del resto
-del sistema.
+probarla es peor que no tenerla. GCP y Vercel son las excepciones
+parciales, cada una con credenciales reales para probarla en vivo:
+- **GCP**: autenticación real (OAuth2 JWT-bearer, RFC 7523 — firmado con
+  `crypto/rsa` puro, sin SDK) y `ListInstances` real vía Compute Engine
+  `aggregatedList` (`internal/adapters/gcp`). El resto (`CreateInstance`
+  y las otras tres `List*`) sigue `ErrNotImplemented`.
+- **Vercel**: `ListInstances` real (`GET /v9/projects`) y `GetCostReport`
+  real (`GET /v1/billing/charges`, formato FOCUS v1.3) — ver
+  `internal/adapters/vercel`. El resto (`CreateInstance` y las otras tres
+  `List*`) sigue `ErrNotImplemented`, porque Vercel no tiene VPCs/bases de
+  datos gestionadas/buckets en el sentido que modela este contrato.
+
+De los 45 métodos `Create*`/`List*`/`GetCostReport` entre los 5 adapters,
+3 llaman de verdad a una API real hoy (`GCP.ListInstances`,
+`Vercel.ListInstances`, `Vercel.GetCostReport`) — el contrato
+(`ProviderAdapter`, specs, capabilities) ya está listo para que el resto
+se agregue adapter por adapter sin tocar nada más del sistema.
 
 `asterion local` y `agent-run` (internal/sysinfo) solo leen datos reales en
 Linux (/proc, /sys) — en otros sistemas operativos devuelven un error claro
@@ -1225,14 +1318,18 @@ construido todavía — deliberadamente, no por descuido:
 - **`asterion local repair`/`rollback`**: no tienen sentido sin que exista
   antes algo que Asterion haya aplicado — son la fase siguiente a los
   adapters de arriba.
-- **Protocolo de administración remota** (Cloud → revisión de
-  configuración firmada → Agent → Runtime Engine → aplicar → verificar,
-  spec §31-37): el Agent hoy es de solo lectura hacia Cloud (métricas +
-  heartbeat), nunca ejecuta nada que Cloud le mande. `remote_management`
-  en `runtime.json` existe como interruptor y permisos granulares, pero
-  todavía no hay ningún canal que los use — es intencional: reservar el
-  campo antes de tener el protocolo evita tener que migrar configuración
-  después.
+- **Protocolo de administración remota — parcial, no el spec completo**
+  (Cloud → revisión de configuración firmada → Agent → Runtime Engine →
+  aplicar → verificar, spec §31-37): el Agent **ya puede** recibir y
+  ejecutar órdenes desde Cloud (el heartbeat trae `pending_jobs`, ver "El
+  Agent" más arriba), pero acotado a un solo `job_type`
+  (`os_user_manage`) y sin firma criptográfica de la orden — el
+  interruptor + rol por instancia (`remote_management_enabled` +
+  `allowed_job_types`, ver `asterion-cloud/README.md`) es el control de
+  acceso hoy, no una firma verificable. Lo que sigue faltando del spec
+  completo: firewall/reverse-proxy/tunnel/TLS de la máquina como
+  `job_type` adicionales (bloqueados, de nuevo, por que esos adapters
+  todavía no declaran `apply`), y la firma criptográfica de cada orden.
 - **Multi-usuario del dashboard local** (Owner/Admin/Operator/Viewer con
   sesiones propias): `local serve` sigue siendo de un solo usuario, gateado
   al email de `asterion cloud login` — construir RBAC local es un cambio

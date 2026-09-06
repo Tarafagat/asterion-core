@@ -41,11 +41,34 @@ type TunnelAdapter struct{}
 func (TunnelAdapter) Name() string                      { return "tunnel" }
 func (TunnelAdapter) Capabilities() map[Capability]bool { return inspectOnly }
 
+// applyAndRollback son las capabilities de un adapter que de verdad puede
+// mutar el sistema Y deshacerlo — a diferencia de inspectOnly, acá Apply/
+// Rollback están declarados como true de verdad, no ausentes.
+var applyAndRollback = map[Capability]bool{
+	CapDetect:   true,
+	CapInspect:  true,
+	CapPlan:     true,
+	CapApply:    true,
+	CapVerify:   true,
+	CapRollback: true,
+}
+
+// OSUserAdapter es el primer adapter de este paquete que declara Apply Y
+// Rollback de verdad — ver internal/osuser (paquete hermano, sin
+// dependencia de vuelta a este): cada Apply calcula y guarda un Diff
+// preciso, y Rollback lo revierte exactamente (nunca un borrado genérico
+// "todo lo que tenga que ver con este usuario"). RequireSafeApply pasa
+// para este adapter por primera vez en todo el código.
+type OSUserAdapter struct{}
+
+func (OSUserAdapter) Name() string                      { return "osuser" }
+func (OSUserAdapter) Capabilities() map[Capability]bool { return applyAndRollback }
+
 // Registry son todos los adapters de infraestructura local conocidos por
 // Asterion — usado por `asterion local doctor`/`local status` para listar
 // capabilities de forma genérica en vez de mencionar cada adapter a mano.
 func Registry() []Adapter {
-	return []Adapter{UFWAdapter{}, SSHAdapter{}, ReverseProxyAdapter{}, TunnelAdapter{}}
+	return []Adapter{UFWAdapter{}, SSHAdapter{}, ReverseProxyAdapter{}, TunnelAdapter{}, OSUserAdapter{}}
 }
 
 // AssessSSHFirewallRisk es el único lugar donde este paquete "hace" algo

@@ -6,11 +6,20 @@ import {
   type CostEstimate,
   type DoctorReport,
   type MachineInfo,
+  type ManagedOsUser,
+  type OsUserLevel,
+  type OsUserSupport,
   type Plugin,
   type PluginBrowseResult,
   type RuntimeStatus,
   type Snapshot,
 } from "./lib/api";
+
+const OS_USER_LEVEL_LABELS: Record<OsUserLevel, string> = {
+  admin: "Admin (sudo completo)",
+  operador: "Operador (sudo limitado + Docker)",
+  solo_lectura: "Solo lectura (sin sudo)",
+};
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | undefined>(undefined);
@@ -132,7 +141,7 @@ function LoginScreen({
   );
 }
 
-type DashboardTab = "overview" | "plugins";
+type DashboardTab = "overview" | "plugins" | "os_users";
 
 function Dashboard({ onLogout, onShutdown }: { onLogout: () => void; onShutdown: () => void }) {
   const [tab, setTab] = useState<DashboardTab>("overview");
@@ -145,6 +154,8 @@ function Dashboard({ onLogout, onShutdown }: { onLogout: () => void; onShutdown:
   const [plugins, setPlugins] = useState<Plugin[] | null>(null);
   const [pluginsError, setPluginsError] = useState<string | null>(null);
   const [selectedPlugin, setSelectedPlugin] = useState<string | null>(null);
+  const [osUsers, setOsUsers] = useState<ManagedOsUser[] | null>(null);
+  const [osUsersError, setOsUsersError] = useState<string | null>(null);
 
   useEffect(() => {
     api.info().then(setInfo);
@@ -193,6 +204,19 @@ function Dashboard({ onLogout, onShutdown }: { onLogout: () => void; onShutdown:
     refreshPlugins();
   }, []);
 
+  async function refreshOsUsers() {
+    try {
+      setOsUsers(await api.listOsUsers());
+      setOsUsersError(null);
+    } catch (err) {
+      setOsUsersError(err instanceof Error ? err.message : "No se pudieron listar los usuarios del sistema.");
+    }
+  }
+
+  useEffect(() => {
+    refreshOsUsers();
+  }, []);
+
   const runningPlugins = plugins?.filter((p) => p.status === "running").length ?? 0;
 
   return (
@@ -213,6 +237,13 @@ function Dashboard({ onLogout, onShutdown }: { onLogout: () => void; onShutdown:
             {plugins && plugins.length > 0 && (
               <span className="tab-count">{runningPlugins}/{plugins.length}</span>
             )}
+          </button>
+          <button
+            className={`subnav-tab ${tab === "os_users" ? "active" : ""}`}
+            onClick={() => setTab("os_users")}
+          >
+            Usuarios
+            {osUsers && osUsers.length > 0 && <span className="tab-count">{osUsers.length}</span>}
           </button>
         </div>
         <div className="subnav-actions">
@@ -313,6 +344,15 @@ function Dashboard({ onLogout, onShutdown }: { onLogout: () => void; onShutdown:
           plugin={plugins?.find((p) => p.name === selectedPlugin) ?? null}
           onBack={() => setSelectedPlugin(null)}
           onChange={refreshPlugins}
+        />
+      )}
+
+      {tab === "os_users" && (
+        <OsUsersPanel
+          osUsers={osUsers}
+          error={osUsersError}
+          support={runtime?.os_user_support}
+          onChange={refreshOsUsers}
         />
       )}
     </div>
@@ -960,6 +1000,189 @@ function PluginCard({ plugin, onChange, onOpen }: { plugin: Plugin; onChange: ()
         </button>
       </div>
 
+      {error && <p className="error-text">{error}</p>}
+    </div>
+  );
+}
+
+// Usuarios del sistema operativo de ESTA máquina — mismo motor
+// (asterion-core/internal/osuser) que `asterion local user`, expuesto acá
+// vía app/osuser_bridge.py (backend-core) para no tener que abrir una
+// terminal. `support` viene de `asterion local status` (campo
+// os_user_support, ver internal/osuser.SupportStatus): si esta máquina no
+// es Debian/Ubuntu o el proceso no corre como root, se explica el motivo
+// en vez de dejar que el primer submit falle sin contexto.
+function OsUsersPanel({
+  osUsers,
+  error,
+  support,
+  onChange,
+}: {
+  osUsers: ManagedOsUser[] | null;
+  error: string | null;
+  support?: OsUserSupport;
+  onChange: () => void;
+}) {
+  const [username, setUsername] = useState("");
+  const [level, setLevel] = useState<OsUserLevel>("solo_lectura");
+  const [publicKey, setPublicKey] = useState("");
+  const [generateKey, setGenerateKey] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [revealedKey, setRevealedKey] = useState<{ username: string; key: string } | null>(null);
+
+  async function handleCreate(e: FormEvent) {
+    e.preventDefault();
+    if (!username.trim()) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const created = await api.createOsUser({
+        username: username.trim(),
+        level,
+        public_key: generateKey ? undefined : publicKey.trim() || undefined,
+        generate_key: generateKey,
+      });
+      if (created.private_key) {
+        setRevealedKey({ username: username.trim(), key: created.private_key });
+      }
+      setUsername("");
+      setPublicKey("");
+      setGenerateKey(false);
+      onChange();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "No se pudo crear el usuario.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <p className="section-title">Usuarios del sistema</p>
+      <p className="hint">
+        Crea/quita usuarios del sistema operativo en esta máquina — mismo motor que <code>asterion local user</code>,
+        con 3 niveles fijos de acceso (admin, operador, solo lectura).
+      </p>
+
+      {support && !support.supported ? (
+        <p className="error-text" style={{ marginTop: "0.75rem" }}>
+          No disponible en esta máquina: {support.reason}
+        </p>
+      ) : (
+        <form onSubmit={handleCreate} style={{ marginTop: "0.85rem" }}>
+          <div className="field-row">
+            <label htmlFor="osuser-username">Usuario</label>
+            <input
+              id="osuser-username"
+              type="text"
+              className="token-input"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="ej. deploy"
+            />
+          </div>
+          <div className="field-row">
+            <label htmlFor="osuser-level">Nivel</label>
+            <select
+              id="osuser-level"
+              className="token-input"
+              value={level}
+              onChange={(e) => setLevel(e.target.value as OsUserLevel)}
+            >
+              {(Object.entries(OS_USER_LEVEL_LABELS) as [OsUserLevel, string][]).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginTop: "0.5rem" }}>
+            <input type="checkbox" checked={generateKey} onChange={(e) => setGenerateKey(e.target.checked)} />
+            Generar un par de claves SSH nuevo
+          </label>
+          {!generateKey && (
+            <div className="field-row">
+              <label htmlFor="osuser-pubkey">Clave pública (opcional)</label>
+              <input
+                id="osuser-pubkey"
+                type="text"
+                className="token-input"
+                value={publicKey}
+                onChange={(e) => setPublicKey(e.target.value)}
+                placeholder="ssh-ed25519 AAAA... yo"
+              />
+            </div>
+          )}
+          <button className="small-btn" type="submit" disabled={!username.trim() || creating} style={{ marginTop: "0.6rem" }}>
+            {creating ? "Creando…" : "Crear usuario"}
+          </button>
+          {createError && <p className="error-text">{createError}</p>}
+        </form>
+      )}
+
+      {revealedKey && (
+        <div className="card" style={{ marginTop: "0.85rem" }}>
+          <p className="hint">
+            Clave privada generada para <strong>{revealedKey.username}</strong> — copiala ahora, no se vuelve a
+            mostrar:
+          </p>
+          <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{revealedKey.key}</pre>
+          <button className="small-btn" onClick={() => setRevealedKey(null)}>
+            Ya la copié, cerrar
+          </button>
+        </div>
+      )}
+
+      {error && <p className="error-text">{error}</p>}
+      {osUsers && osUsers.length === 0 && (
+        <p className="hint" style={{ marginTop: "0.85rem" }}>
+          Todavía no hay usuarios administrados por Asterion en esta máquina.
+        </p>
+      )}
+      {osUsers?.map((u) => (
+        <OsUserCard key={u.username} user={u} onChange={onChange} />
+      ))}
+    </div>
+  );
+}
+
+function OsUserCard({ user, onChange }: { user: ManagedOsUser; onChange: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleRemove() {
+    if (!window.confirm(`¿Revertir "${user.username}"? Esto deshace exactamente lo que Asterion le aplicó.`)) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.removeOsUser(user.username);
+      onChange();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo revertir.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="plugin-item plugin-item-compact" style={{ marginTop: "0.6rem" }}>
+      <div className="plugin-header">
+        <div>
+          <span className="plugin-name">{user.username}</span>
+          <span className="plugin-version">{OS_USER_LEVEL_LABELS[user.level]}</span>
+        </div>
+      </div>
+      {user.diff.groups_to_add.length > 0 && (
+        <p className="hint" style={{ marginTop: "0.35rem" }}>
+          Grupos: {user.diff.groups_to_add.join(", ")}
+        </p>
+      )}
+      <div className="btn-row" style={{ marginTop: "0.65rem" }}>
+        <button className="danger-btn" disabled={busy} onClick={handleRemove}>
+          Quitar
+        </button>
+      </div>
       {error && <p className="error-text">{error}</p>}
     </div>
   );

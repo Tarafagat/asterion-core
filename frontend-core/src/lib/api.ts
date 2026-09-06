@@ -74,9 +74,54 @@ export interface RuntimeConfig {
   remote_management_enabled: boolean;
 }
 
+// os_user_support es el único chequeo EN VIVO de si esta máquina puntual
+// puede de verdad crear/administrar usuarios de sistema (distro
+// Debian/Ubuntu + proceso corriendo como root) — a diferencia de
+// safety_capabilities (que declara qué sabe hacer el código, siempre
+// igual sin importar la máquina). Ausente = build de asterion-core
+// anterior a esta feature, tratarlo como "desconocido", nunca como "sí".
+export interface OsUserSupport {
+  supported: boolean;
+  reason?: string;
+}
+
 export interface RuntimeStatus {
   environment: RuntimeEnvironment;
   config: RuntimeConfig;
+  os_user_support?: OsUserSupport;
+}
+
+export type OsUserLevel = "admin" | "operador" | "solo_lectura";
+
+export interface OsUserDiff {
+  username: string;
+  level: OsUserLevel;
+  user_existed: boolean;
+  home_dir: string;
+  groups_to_add: string[];
+  sudo_rule: string;
+  sudo_file_path: string;
+  ssh_key_line?: string;
+  ssh_key_already_present: boolean;
+  already_managed: boolean;
+}
+
+// Usuario de sistema que ESTE `asterion` administra en ESTA máquina — ver
+// internal/osuser.ManagedUser (asterion-core), la misma fuente que
+// `asterion local user list` ya imprime.
+export interface ManagedOsUser {
+  username: string;
+  level: OsUserLevel;
+  diff: OsUserDiff;
+  created_at: string;
+}
+
+export interface OsUserCreateResult {
+  result: { diff: OsUserDiff; success: boolean; warnings?: string[] };
+  // Solo viene si se pidió generate_key=true — se muestra una sola vez,
+  // nunca se vuelve a poder pedir después (mismo criterio que el resto de
+  // los secretos de Asterion).
+  private_key?: string;
 }
 
 export interface DoctorCheck {
@@ -227,4 +272,14 @@ export const api = {
       method,
       body: body === undefined ? undefined : JSON.stringify(body),
     }),
+  listOsUsers: () => request<ManagedOsUser[]>("/os-users"),
+  createOsUser: (payload: {
+    username: string;
+    level: OsUserLevel;
+    groups?: string[];
+    public_key?: string;
+    generate_key?: boolean;
+  }) => request<OsUserCreateResult>("/os-users", { method: "POST", body: JSON.stringify(payload) }),
+  removeOsUser: (username: string) =>
+    request<{ username: string; reverted: boolean }>(`/os-users/${username}`, { method: "DELETE" }),
 };

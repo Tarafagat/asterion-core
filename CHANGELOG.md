@@ -9,6 +9,71 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
+- **Aprovisionamiento de usuarios de sistema, uniforme entre
+  proveedores (`internal/osuser` + `asterion local user`).** El problema:
+  después de crear una instancia con Asterion, no había forma uniforme de
+  crear un usuario del sistema operativo dentro de ella — había que
+  entrar por SSH a mano. Nuevo motor en Go (sin dependencias nuevas —
+  hasta la clave SSH se genera con `crypto/ed25519` puro):
+  `Plan`/`Apply`/`Verify`/`Rollback`, 3 niveles fijos
+  (`admin`/`operador`/`solo_lectura`), y `OSUserAdapter` — el **primer**
+  adapter de `internal/safety` que declara `apply` y `rollback` de
+  verdad, con un `Diff` exacto guardado en cada `Apply` para que
+  `Rollback` revierta precisamente eso (un usuario preexistente nunca se
+  borra por error). `asterion local user create/list/remove` expone esto
+  en el CLI, con el mismo formato CURRENT/PROPOSED CHANGE que ya usa
+  `firewall plan`. `asterion local status` suma `os_user_support`
+  (chequeo en vivo: distro soportada + corriendo como root).
+- **El Agent ahora puede recibir y ejecutar órdenes de Asterion Cloud.**
+  El heartbeat (`POST /agent/heartbeat`, cada 30s) pasó de `204` sin body
+  a `200` con `pending_jobs` — el agente no tiene ningún puerto propio
+  abierto, así que se aprovecha su propio polling en vez de abrir un
+  canal nuevo (100% retrocompatible: un agente viejo simplemente ignora
+  el campo). Cada job se ejecuta con el mismo `internal/osuser` que usa
+  el CLI local (nunca una reimplementación) y el resultado se reporta a
+  `POST /agent/jobs/{id}/result` — nuevo `cmd/asterion/agentjobs.go`.
+  Solo existe un `job_type` hoy (`os_user_manage`); el diseño (lista de
+  jobs permitidos por instancia, ver `asterion-cloud`) queda listo para
+  agregar más sin otra migración.
+- **Tab "Usuarios" en `asterion local serve`.** Crear/listar/quitar
+  usuarios del sistema de esta máquina desde el navegador — nuevo
+  `backend-core/app/osuser_bridge.py` (mismo patrón subprocess+`--json`
+  que ya usaba `plugin_bridge.py`), que necesitó agregarle `--json` a
+  `local user create`/`remove` (`list` ya lo hacía). Si la máquina no
+  puede administrar usuarios (distro no soportada, sin privilegios), el
+  panel explica el motivo real en vez de dejar que el primer intento
+  falle sin contexto.
+- **Detección automática de identidad cloud + vincular en vez de
+  duplicar.** Nuevo `internal/cloudmeta`: al arrancar, el agente prueba
+  (una sola vez, ~800ms por intento) los servicios de metadata de
+  GCP/AWS/Azure/OCI y lo manda en cada heartbeat si detecta uno — en un
+  server privado no cambia nada del comportamiento de siempre. Resuelve
+  un caso real: una instancia ya conectada por agente, cuya cuenta cloud
+  se conecta a Asterion recién después, terminaba duplicada al
+  descubrirla por la cuenta cloud (dos IDs que nunca coincidían,
+  `inst_xxxxxxxx` local vs. el ID nativo del proveedor). Ahora
+  `instances` guarda `cloud_provider`/`cloud_native_id` reportados por el
+  agente, y el descubrimiento por cuenta cloud los cruza — ver
+  `asterion-cloud/README.md` § Descubrimiento para el flujo completo de
+  "vincular".
+- **GCP: autenticación real y descubrimiento real de instancias**
+  (`internal/adapters/gcp`). Flujo OAuth2 JWT-bearer (RFC 7523) completo
+  con stdlib puro (`crypto/rsa`, `crypto/x509`, sin SDK de Google):
+  firma el JWT con la clave privada de la cuenta de servicio, lo canjea
+  en `oauth2.googleapis.com/token`, y usa el access token contra
+  `GET .../compute/v1/projects/{project}/aggregated/instances` — primera
+  integración cloud real de todo el sistema de adapters además de
+  Vercel. `CreateInstance` y las otras tres `List*` de GCP siguen
+  `ErrNotImplemented`, mismo criterio que el resto.
+
+### Fixed
+- `agent-keys.json` guardaba la API key de una instancia **en texto
+  plano** — bug real encontrado revisando el flujo de conexión. Ahora se
+  cifra con `internal/secretbox` (mismo cifrado que ya usaba
+  `internal/plugins`), con migración automática y transparente de
+  cualquier entrada vieja sin cifrar la primera vez que se lee.
+
+### Added
 - **Vercel como proveedor nuevo (`internal/adapters/vercel`), con
   discovery real.** El usuario pidió inicialmente correr `asterion-core`
   y el agente EN Vercel — no es posible (`agent-run` es un loop infinito

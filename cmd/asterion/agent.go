@@ -732,8 +732,16 @@ func agentRunCmd() *cobra.Command {
 				ticker := time.NewTicker(heartbeatInterval)
 				defer ticker.Stop()
 				for {
-					if err := reportHeartbeat(cfg.APIBaseURL, apiKey, identity); err != nil {
+					jobs, err := reportHeartbeat(cfg.APIBaseURL, apiKey, identity)
+					if err != nil {
 						fmt.Fprintln(os.Stderr, "agente (heartbeat):", err)
+					}
+					// Los jobs se ejecutan acá, en el propio loop de
+					// heartbeat, secuencialmente — no hay un canal aparte:
+					// el heartbeat YA es el mecanismo de polling, un job
+					// pendiente simplemente viaja en su respuesta.
+					for _, job := range jobs {
+						executeJob(cfg.APIBaseURL, apiKey, job)
 					}
 					<-ticker.C
 				}
@@ -758,10 +766,31 @@ func agentRunCmd() *cobra.Command {
 	return cmd
 }
 
+// PendingJob es una orden que Asterion Cloud dejó esperando para esta
+// instancia — viaja en la propia respuesta del heartbeat (ver
+// agent/routers/agent.py::push_heartbeat) en vez de por un canal aparte:
+// el heartbeat YA es un polling periódico, no hacía falta inventar uno
+// nuevo. Payload queda sin parsear acá (json.RawMessage) porque su forma
+// depende de JobType — ver executeJob en agentjobs.go.
+type PendingJob struct {
+	ID      int64           `json:"id"`
+	JobType string          `json:"job_type"`
+	Action  string          `json:"action"`
+	Payload json.RawMessage `json:"payload"`
+}
+
+type heartbeatResponse struct {
+	PendingJobs []PendingJob `json:"pending_jobs"`
+}
+
 // reportHeartbeat le dice a Cloud "sigo vivo", separado de las métricas —
 // ver POST /agent/heartbeat. Cloud calcula ONLINE/OFFLINE/STALE a partir
-// de cuándo llegó el último de estos, no de las métricas.
-func reportHeartbeat(apiBaseURL, apiKey string, identity cloudmeta.Identity) error {
+// de cuándo llegó el último de estos, no de las métricas. Devuelve los
+// jobs que Cloud haya dejado pendientes para esta instancia, si los hay
+// (lista vacía en el caso normal — un agente viejo que todavía no sabía
+// leer esto simplemente ignoraba el body entero, así que este campo nuevo
+// es 100% retrocompatible).
+func reportHeartbeat(apiBaseURL, apiKey string, identity cloudmeta.Identity) ([]PendingJob, error) {
 	payload := map[string]any{"agent_version": agentVersion}
 
 	// report_local_serve (ver internal/runtime/config.go) está apagado por
@@ -787,20 +816,28 @@ func reportHeartbeat(apiBaseURL, apiKey string, identity cloudmeta.Identity) err
 	body, _ := json.Marshal(payload)
 	req, err := http.NewRequest(http.MethodPost, apiBaseURL+"/agent/heartbeat", bytes.NewReader(body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Asterion-Api-Key", apiKey)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("la API respondió %d al reportar heartbeat", resp.StatusCode)
+		return nil, fmt.Errorf("la API respondió %d al reportar heartbeat", resp.StatusCode)
 	}
-	return nil
+
+	// Un backend viejo (204 sin body) o cualquier body vacío/no-JSON se
+	// trata como "sin jobs" — nunca como error: el heartbeat en sí ya tuvo
+	// éxito (status < 300), lo único que puede faltar es esta parte nueva.
+	var parsed heartbeatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return nil, nil
+	}
+	return parsed.PendingJobs, nil
 }
 
 // reportOnce manda datos crudos, nunca un costo: cuánto sale eso lo
