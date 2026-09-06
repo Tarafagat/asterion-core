@@ -1,7 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
 	"strconv"
 	"strings"
 
@@ -19,11 +24,33 @@ import (
 // proyecto de Asterion Cloud. list/status siempre imprimen JSON — es lo que
 // consume backend-core/app/plugin_bridge.py para mostrarlos en el
 // dashboard, mismo patrón que 'asterion local status'/'doctor'.
+//
+// El root ADEMÁS tiene su propio RunE (pluginCallRunE): si el primer
+// argumento no matchea ninguno de los subcomandos de abajo, cobra cae acá
+// — es lo que habilita 'asterion plugin <nombre> <instrucción>' para
+// invocar una action declarada en el plugin.yaml del plugin, sin pasar
+// por el panel embebido del dashboard. Contrapartida documentada en
+// pluginCallActionCmd: un plugin que se llamara igual que un subcomando
+// fijo (ej. "list") queda inalcanzable por este camino.
 func pluginsCmd() *cobra.Command {
+	var dataFlag string
+	var paramFlags []string
+
 	root := &cobra.Command{
-		Use:   "plugin",
+		Use:   "plugin [nombre] [instrucción]",
 		Short: "Instala y administra plugins de terceros (integraciones que corren como proceso propio)",
+		Long: "Además de los subcomandos de abajo: 'asterion plugin <nombre> <instrucción>' invoca una\n" +
+			"action declarada en el plugin.yaml de ese plugin (ver 'asterion plugin <nombre>' sin más\n" +
+			"argumentos para listar las disponibles) — pega directo a su API en 127.0.0.1, sin pasar\n" +
+			"por el dashboard. Un plugin llamado igual que un subcomando fijo (list, start, ...) no es\n" +
+			"alcanzable por este camino.",
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return pluginCallAction(args, dataFlag, paramFlags)
+		},
 	}
+	root.Flags().StringVar(&dataFlag, "data", "", "Body JSON para la instrucción (ej. --data '{\"id\":123}')")
+	root.Flags().StringArrayVar(&paramFlags, "param", nil, "Sustituye {clave} en el endpoint declarado — repetible (ej. --param id=123)")
 	root.AddCommand(
 		pluginInstallCmd(),
 		pluginListCmd(),
@@ -33,6 +60,8 @@ func pluginsCmd() *cobra.Command {
 		pluginStartCmd(),
 		pluginStopCmd(),
 		pluginRemoveCmd(),
+		pluginSetMainCmd(),
+		pluginUnsetMainCmd(),
 		pluginConfigCmd(),
 		pluginConnectCmd(),
 		pluginDisconnectCmd(),
@@ -396,6 +425,57 @@ func pluginRemoveCmd() *cobra.Command {
 	return cmd
 }
 
+// pluginSetMainCmd marca un plugin como "principal": el que 'asterion
+// local tunnel start' publica por default sin necesitar --port ni
+// --plugin — ver internal/plugins.SetMain.
+func pluginSetMainCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "set-main <name>",
+		Short: "Marca un plugin como principal — el que se publica por default con 'local tunnel start'",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := plugins.SetMain(args[0]); err != nil {
+				return err
+			}
+			if asJSON {
+				installed, err := plugins.Get(args[0])
+				if err != nil {
+					return err
+				}
+				printJSON(installed)
+				return nil
+			}
+			fmt.Printf("✓ %q marcado como plugin principal\n", args[0])
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el registro resultante como JSON en vez de texto")
+	return cmd
+}
+
+func pluginUnsetMainCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "unset-main",
+		Short: "Quita la marca de principal (si había alguno) — nadie queda como principal",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := plugins.UnsetMain(); err != nil {
+				return err
+			}
+			if asJSON {
+				printJSON(map[string]any{"unset": true})
+				return nil
+			}
+			fmt.Println("✓ Ya no hay ningún plugin marcado como principal")
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el resultado como JSON en vez de texto")
+	return cmd
+}
+
 func pluginConfigCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "config",
@@ -692,4 +772,106 @@ func pluginDisconnectCmd() *cobra.Command {
 	cmd.Flags().StringVar(&projectSlug, "project", "", "Proyecto de Asterion Cloud (opcional — por default el que ya tenía guardado en 'plugin connect')")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el resultado como JSON en vez de texto")
 	return cmd
+}
+
+// pluginCallAction es lo que corre 'asterion plugin <nombre> <instrucción>'
+// (fallback del root cuando <nombre> no matchea ningún subcomando fijo):
+// resuelve la action declarada en el plugin.yaml, arma la URL real contra
+// el puerto del plugin (127.0.0.1, mismo destino que ya usa el reverse
+// proxy del dashboard) y la invoca de verdad — nunca pasa por
+// backend-core, el CLI no lo necesita para pegarle a localhost.
+func pluginCallAction(args []string, dataFlag string, paramFlags []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("uso: asterion plugin <nombre> <instrucción> (ver 'asterion plugin --help')")
+	}
+
+	name := args[0]
+	installed, err := plugins.Get(name)
+	if err != nil {
+		return fmt.Errorf("%q no es ni un subcomando de 'asterion plugin' ni un plugin instalado (ver 'asterion plugin list')", name)
+	}
+
+	if len(args) == 1 {
+		if len(installed.Manifest.Actions) == 0 {
+			return fmt.Errorf("%q no declara ninguna action en su plugin.yaml", name)
+		}
+		fmt.Printf("Instrucciones disponibles para %q:\n", name)
+		for _, a := range installed.Manifest.Actions {
+			desc := a.Description
+			if desc != "" {
+				desc = " — " + desc
+			}
+			fmt.Printf("  %s (%s %s)%s\n", a.Name, a.Method, a.Endpoint, desc)
+		}
+		return nil
+	}
+
+	instruction := args[1]
+	var action *plugins.ActionSpec
+	for i := range installed.Manifest.Actions {
+		if installed.Manifest.Actions[i].Name == instruction {
+			action = &installed.Manifest.Actions[i]
+			break
+		}
+	}
+	if action == nil {
+		names := make([]string, len(installed.Manifest.Actions))
+		for i, a := range installed.Manifest.Actions {
+			names[i] = a.Name
+		}
+		return fmt.Errorf("%q no declara ninguna instrucción llamada %q — disponibles: %s", name, instruction, strings.Join(names, ", "))
+	}
+
+	if installed.Status != "running" {
+		return fmt.Errorf("%q no está corriendo (asterion plugin start %s)", name, name)
+	}
+
+	endpoint := action.Endpoint
+	for _, kv := range paramFlags {
+		key, value, ok := strings.Cut(kv, "=")
+		if !ok {
+			return fmt.Errorf("--param inválido %q — se espera clave=valor", kv)
+		}
+		endpoint = strings.ReplaceAll(endpoint, "{"+key+"}", value)
+	}
+
+	basePath := ""
+	if installed.Manifest.API != nil {
+		basePath = installed.Manifest.API.BasePath
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%d%s%s", installed.Port, basePath, endpoint)
+
+	var body io.Reader
+	if dataFlag != "" {
+		body = strings.NewReader(dataFlag)
+	}
+	req, err := http.NewRequest(action.Method, url, body)
+	if err != nil {
+		return err
+	}
+	if dataFlag != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("no se pudo conectar con %q en el puerto %d: %w", name, installed.Port, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode >= 300 {
+		fmt.Fprintf(os.Stderr, "%q respondió %d\n", name, resp.StatusCode)
+	}
+
+	var parsed any
+	if json.Unmarshal(respBody, &parsed) == nil {
+		printJSON(parsed)
+	} else {
+		fmt.Println(string(bytes.TrimSpace(respBody)))
+	}
+	return nil
 }

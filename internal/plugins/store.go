@@ -29,14 +29,18 @@ type Installed struct {
 	// para que Uninstall sepa que NUNCA debe borrar Dir — ver el comentario
 	// ahí. Un plugin instalado por 'install <repo-url>' normal siempre
 	// tiene Linked=false.
-	Linked               bool      `json:"linked,omitempty"`
-	Manifest             Manifest  `json:"manifest"`
-	Port                 int       `json:"port,omitempty"`
-	PID                  int       `json:"pid,omitempty"`
-	Status               string    `json:"status"` // stopped | running
-	ConnectedProjectSlug string    `json:"connected_project_slug,omitempty"`
-	InstalledAt          time.Time `json:"installed_at"`
-	UpdatedAt            time.Time `json:"updated_at"`
+	Linked               bool     `json:"linked,omitempty"`
+	Manifest             Manifest `json:"manifest"`
+	Port                 int      `json:"port,omitempty"`
+	PID                  int      `json:"pid,omitempty"`
+	Status               string   `json:"status"` // stopped | running
+	ConnectedProjectSlug string   `json:"connected_project_slug,omitempty"`
+	// IsMain marca el plugin que se publica con 'asterion local tunnel
+	// start' cuando no se especifica --port ni --plugin — nunca más de
+	// uno a la vez, ver SetMain.
+	IsMain      bool      `json:"is_main,omitempty"`
+	InstalledAt time.Time `json:"installed_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // NewExternalRef genera el identificador local de un plugin nuevo:
@@ -154,6 +158,67 @@ func Save(p Installed) error {
 		list = append(list, p)
 	}
 	return saveAll(list)
+}
+
+// SetMain marca `name` como el plugin principal (el que 'asterion local
+// tunnel start' publica por default) y apaga IsMain en cualquier otro que
+// lo tuviera — nunca hay dos principales a la vez.
+func SetMain(name string) error {
+	list, err := List()
+	if err != nil {
+		return err
+	}
+	found := false
+	for i := range list {
+		if list[i].Name == name {
+			list[i].IsMain = true
+			found = true
+		} else {
+			list[i].IsMain = false
+		}
+	}
+	if !found {
+		return fmt.Errorf("no hay ningún plugin instalado llamado %q (ver 'asterion plugin list')", name)
+	}
+	for i := range list {
+		list[i].UpdatedAt = time.Now()
+	}
+	return saveAll(list)
+}
+
+// UnsetMain apaga el plugin principal actual, si hay alguno — no-op (sin
+// error) si ninguno estaba marcado.
+func UnsetMain() error {
+	list, err := List()
+	if err != nil {
+		return err
+	}
+	changed := false
+	for i := range list {
+		if list[i].IsMain {
+			list[i].IsMain = false
+			list[i].UpdatedAt = time.Now()
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return saveAll(list)
+}
+
+// GetMain devuelve el plugin principal actual, si hay alguno marcado.
+func GetMain() (Installed, bool, error) {
+	list, err := List()
+	if err != nil {
+		return Installed{}, false, err
+	}
+	for _, p := range list {
+		if p.IsMain {
+			return p, true, nil
+		}
+	}
+	return Installed{}, false, nil
 }
 
 // Remove borra el registro de un plugin instalado (no borra el directorio

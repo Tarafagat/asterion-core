@@ -13,6 +13,7 @@ import {
   type PluginBrowseResult,
   type RuntimeStatus,
   type Snapshot,
+  type TunnelStatus,
 } from "./lib/api";
 
 const OS_USER_LEVEL_LABELS: Record<OsUserLevel, string> = {
@@ -569,6 +570,120 @@ function PluginDetail({
       <PluginConfigCard plugin={plugin} onChange={onChange} />
       <PluginEndpointsCard plugin={plugin} />
       <PluginConnectCard plugin={plugin} onChange={onChange} />
+      <PluginPublishCard plugin={plugin} />
+    </div>
+  );
+}
+
+// Publicar el plugin principal con una URL pública real (Cloudflare
+// Tunnel) — solo aparece para el plugin marcado como principal (ver
+// PluginCard más abajo, botón "Marcar como principal"). El túnel es un
+// recurso único de la máquina (nunca dos a la vez, ver internal/tunnel),
+// así que si ya hay uno corriendo mostrando otro puerto se avisa en vez
+// de asumir que es de este plugin.
+function PluginPublishCard({ plugin }: { plugin: Plugin }) {
+  const [tunnel, setTunnel] = useState<TunnelStatus | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function refresh() {
+    try {
+      setTunnel(await api.tunnelStatus());
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo leer el estado del túnel.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plugin.name]);
+
+  if (!plugin.is_main) return null;
+
+  const running = tunnel?.running ?? false;
+  const exposesThisPlugin = running && plugin.port !== undefined && tunnel?.state.port === plugin.port;
+
+  async function handleStart() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.tunnelStart(plugin.name);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo iniciar el túnel.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleStop() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api.tunnelStop();
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo detener el túnel.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: "0.85rem" }}>
+      <p className="section-title">Publicar</p>
+      <p className="hint">
+        Este es el plugin principal — se publica con una URL pública real vía Cloudflare Tunnel. Con un
+        token de túnel guardado (<code>asterion local tunnel config set --token ...</code>) la URL usa tu
+        propio dominio en vez de una generada al azar — el certificado lo maneja Cloudflare, nunca hace
+        falta gestionarlo acá.
+      </p>
+      {loading && <p className="hint" style={{ marginTop: "0.5rem" }}>Cargando…</p>}
+      {!loading && running && (
+        <div style={{ marginTop: "0.6rem" }}>
+          {exposesThisPlugin ? (
+            <p className="hint">
+              Publicado en:{" "}
+              {tunnel?.state.url ? (
+                <a href={tunnel.state.url} target="_blank" rel="noreferrer" style={{ color: "inherit", textDecoration: "underline" }}>
+                  {tunnel.state.url}
+                </a>
+              ) : (
+                "tu túnel con dominio propio (el Public Hostname configurado en el dashboard de Cloudflare)"
+              )}
+            </p>
+          ) : (
+            <p className="hint">
+              Hay un túnel corriendo, pero apunta a otro puerto (otro plugin, o el dashboard local) —
+              detenelo antes de publicar este.
+            </p>
+          )}
+          <button className="small-btn" style={{ marginTop: "0.5rem" }} disabled={busy} onClick={handleStop}>
+            {busy ? "Deteniendo…" : "Detener túnel"}
+          </button>
+        </div>
+      )}
+      {!loading && !running && (
+        <>
+          <button
+            className="small-btn"
+            style={{ marginTop: "0.6rem" }}
+            disabled={busy || plugin.status !== "running"}
+            onClick={handleStart}
+          >
+            {busy ? "Publicando…" : "Publicar"}
+          </button>
+          {plugin.status !== "running" && (
+            <p className="hint" style={{ marginTop: "0.4rem" }}>Arrancá el plugin primero para poder publicarlo.</p>
+          )}
+        </>
+      )}
+      {error && <p className="error-text">{error}</p>}
     </div>
   );
 }
@@ -964,6 +1079,11 @@ function PluginCard({ plugin, onChange, onOpen }: { plugin: Plugin; onChange: ()
           <span className={`status-dot ${statusClass}`} />
           <span className="plugin-name">{plugin.manifest.name}</span>
           <span className="plugin-version">v{plugin.manifest.version}</span>
+          {plugin.is_main && (
+            <span className="badge" style={{ marginLeft: "0.5rem" }} title="Se publica por default con 'local tunnel start'">
+              ★ Principal
+            </span>
+          )}
         </div>
       </div>
 
@@ -985,6 +1105,20 @@ function PluginCard({ plugin, onChange, onOpen }: { plugin: Plugin; onChange: ()
         ) : (
           <button className="small-btn" disabled={busy} onClick={() => run(() => api.startPlugin(plugin.name))}>
             Arrancar
+          </button>
+        )}
+        {plugin.is_main ? (
+          <button className="small-btn" disabled={busy} onClick={() => run(() => api.unsetMainPlugin(plugin.name))}>
+            Quitar de principal
+          </button>
+        ) : (
+          <button
+            className="small-btn"
+            disabled={busy}
+            title="Se publica por default con 'asterion local tunnel start'"
+            onClick={() => run(() => api.setMainPlugin(plugin.name))}
+          >
+            Marcar como principal
           </button>
         )}
         <button

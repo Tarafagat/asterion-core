@@ -15,13 +15,31 @@ import (
 )
 
 // State es lo que se guarda mientras el túnel corre en segundo plano.
+// Un solo túnel a la vez, sin importar el Provider — mismo archivo
+// (tunnel.json) para todos.
 type State struct {
-	PID       int       `json:"pid"`
-	Port      int       `json:"port,omitempty"` // 0 en modo --token (el mapeo hostname->puerto vive del lado de Cloudflare)
-	URL       string    `json:"url,omitempty"`  // vacío hasta que cloudflared lo imprime (modo quick tunnel) o siempre vacío en modo --token
-	Mode      string    `json:"mode"`           // "quick" | "token"
+	// Provider identifica qué tunnel provider lo levantó — "cloudflare" o
+	// "nginx" hoy. Vacío se trata como "cloudflare" (un tunnel.json
+	// guardado por una versión anterior de Asterion, de antes de que
+	// existiera este campo, sigue siendo válido) — ver ResolveProvider.
+	Provider  string    `json:"provider,omitempty"`
+	PID       int       `json:"pid"`              // 0 para un provider que no es un proceso propio (ver nginx)
+	Port      int       `json:"port,omitempty"`   // 0 en modo --token (el mapeo hostname->puerto vive del lado de Cloudflare)
+	URL       string    `json:"url,omitempty"`    // vacío hasta que se conoce la URL pública real
+	Domain    string    `json:"domain,omitempty"` // hostname público — obligatorio para nginx, ausente en Cloudflare quick
+	Mode      string    `json:"mode"`             // "quick" | "token" (solo cloudflare) — vacío en otros providers
 	LogPath   string    `json:"log_path"`
 	StartedAt time.Time `json:"started_at"`
+}
+
+// ResolveProvider devuelve el Provider real de un State, tratando el
+// campo vacío (tunnel.json de antes de que este campo existiera) como
+// "cloudflare" — nunca como "desconocido".
+func (s State) ResolveProvider() string {
+	if s.Provider == "" {
+		return "cloudflare"
+	}
+	return s.Provider
 }
 
 func baseDir() (string, error) {

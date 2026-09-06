@@ -21,6 +21,7 @@ from app.config import get_settings
 from app.routers.api import router as api_router
 from app.routers.osusers import router as osusers_router
 from app.routers.plugins import router as plugins_router
+from app.routers.tunnel import router as tunnel_router
 
 app = FastAPI(title="Asterion Core — backend-core", version="0.1.0")
 
@@ -36,6 +37,7 @@ app.add_middleware(
 app.include_router(api_router)
 app.include_router(plugins_router)
 app.include_router(osusers_router)
+app.include_router(tunnel_router)
 
 _dist = Path(settings.frontend_dist_path)
 if _dist.is_dir():

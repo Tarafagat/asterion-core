@@ -149,6 +149,20 @@ def connect_plugin(name: str, payload: PluginConnectRequest, _: dict = Depends(g
     return _handle(lambda: plugin_bridge.connect(name, payload.project_id))
 
 
+@router.post("/{name}/main")
+def set_main_plugin(name: str, _: dict = Depends(get_local_session)) -> dict:
+    """Marca este plugin como el principal — el que 'local tunnel start'
+    publica por default. Apaga cualquier otro que lo tuviera antes."""
+    return _handle(lambda: plugin_bridge.set_main(name))
+
+
+@router.delete("/{name}/main")
+def unset_main_plugin(name: str, _: dict = Depends(get_local_session)) -> dict:
+    """Quita la marca de principal — idempotente, no falla si `name` no
+    era el principal actual (o si no había ninguno)."""
+    return _handle(plugin_bridge.unset_main)
+
+
 @router.api_route("/{name}/proxy/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
 async def proxy_to_plugin(name: str, path: str, request: Request, _: dict = Depends(get_local_session)) -> Response:
     """Reenvía a http://127.0.0.1:<puerto del plugin>/<path> — así el

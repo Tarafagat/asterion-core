@@ -224,8 +224,27 @@ export interface Plugin {
   pid?: number;
   status: PluginStatus;
   connected_project_id?: number;
+  // El plugin que 'local tunnel start' publica por default (sin --port
+  // ni --plugin) — nunca más de uno a la vez, ver internal/plugins.SetMain.
+  is_main?: boolean;
   installed_at: string;
   updated_at: string;
+}
+
+// Estado del túnel público (Cloudflare Tunnel) — ver internal/tunnel.
+// mode/url/log_path vacíos y pid 0 cuando no hay nada corriendo.
+export interface TunnelState {
+  pid: number;
+  port?: number;
+  url?: string;
+  mode: string; // "" | "quick" | "token"
+  log_path: string;
+  started_at: string;
+}
+
+export interface TunnelStatus {
+  running: boolean;
+  state: TunnelState;
 }
 
 export const api = {
@@ -282,4 +301,10 @@ export const api = {
   }) => request<OsUserCreateResult>("/os-users", { method: "POST", body: JSON.stringify(payload) }),
   removeOsUser: (username: string) =>
     request<{ username: string; reverted: boolean }>(`/os-users/${username}`, { method: "DELETE" }),
+  setMainPlugin: (name: string) => request<Plugin>(`/plugins/${name}/main`, { method: "POST" }),
+  unsetMainPlugin: (name: string) => request<{ unset: boolean }>(`/plugins/${name}/main`, { method: "DELETE" }),
+  tunnelStatus: () => request<TunnelStatus>("/tunnel"),
+  tunnelStart: (plugin?: string) =>
+    request<TunnelState>("/tunnel/start", { method: "POST", body: JSON.stringify({ plugin: plugin ?? null }) }),
+  tunnelStop: () => request<{ stopped: boolean }>("/tunnel/stop", { method: "POST" }),
 };

@@ -91,3 +91,14 @@ def show_config(name: str) -> dict:
 
 def connect(name: str, project_id: int) -> dict:
     return _run(["connect", name, "--project", str(project_id), "--json"])
+
+
+def set_main(name: str) -> dict:
+    """Marca `name` como el plugin principal — el que 'local tunnel start'
+    publica por default. Ver internal/plugins.SetMain: apaga cualquier
+    otro que lo tuviera, nunca hay dos principales a la vez."""
+    return _run(["set-main", name, "--json"])
+
+
+def unset_main() -> dict:
+    return _run(["unset-main", "--json"])
