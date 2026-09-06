@@ -1223,19 +1223,32 @@ una secuencia de comandos. Vive en el repo hermano
 
 ```bash
 asterion language check main.asterion   # lexer + parser + semantic — nunca toca infraestructura
+asterion language apply main.asterion --credentials-file sa.json --dry-run   # compila y muestra qué se crearía
+asterion language apply main.asterion --credentials-file sa.json             # lo crea de verdad
 ```
 
-**Solo `check` existe hoy.** `plan`/`apply` no están implementados a
-propósito: no hay ningún DAG reutilizable en Go para planificar sobre él
-(el único vive en `asterion-cloud`, en Python, detrás de HTTP), y los 4
-Provider Adapters de este repo son stubs (`ErrNotImplemented`) — un
-`apply` real contra una nube está bloqueado por este mismo repo, no por el
-diseño del lenguaje. `check` sí valida capabilities de verdad: si el
-servicio de adapters (`cmd/asterion-core`, el binario aparte) está
-corriendo, consulta sus capabilities reales por HTTP (mismo canal que
-`asterion providers`/`asterion capabilities`); si no, cae a un snapshot
-estático de referencia y lo dice explícitamente en la salida — nunca en
-silencio.
+**`check` valida, `apply` ya crea infraestructura real — para GCP.**
+`apply` corre `check` primero (nunca aplica un archivo que no compila o no
+pasa la validación semántica), compila con el paquete `providerspec` del
+repo hermano (`Provider.gcp.instance(...)` → un spec propio, sin depender
+de `internal/adapters` de este repo — son módulos Go independientes) y
+llama de verdad a `internal/coreclient.CreateInstance`, que le pega al
+mismo servicio de adapters que ya usan `asterion providers`/`asterion
+capabilities` (`POST /adapters/{provider}/instances`). AWS/Azure/OCI dan
+un diagnóstico claro (`ASTR403`, "todavía no soportado para apply") en vez
+de fallar en silencio — sus adapters siguen siendo stubs
+(`ErrNotImplemented`), y `plan` (un DAG real de varios recursos con orden
+de dependencias) tampoco existe todavía: esta fase aplica un recurso a la
+vez, en el orden en que aparece en el archivo. `check`/`apply` validan
+capabilities de verdad: si el servicio de adapters (`cmd/asterion-core`,
+el binario aparte) está corriendo, consultan sus capabilities reales por
+HTTP (mismo canal que `asterion providers`/`asterion capabilities`); si
+no, caen a un snapshot estático de referencia y lo dicen explícitamente en
+la salida — nunca en silencio.
+
+Verificado en vivo de punta a punta: `asterion language apply` contra una
+service account real creó una instancia `e2-micro` de verdad en GCP,
+confirmada con `ListInstances`, y borrada apenas se confirmó.
 
 Ver el README de `asterion-language` para la especificación completa
 (gramática, códigos de diagnóstico `ASTRnnn`) y por qué la arquitectura
@@ -1253,9 +1266,15 @@ integración de punta a punta, y publicar una llamada real sin poder
 probarla es peor que no tenerla. GCP y Vercel son las excepciones
 parciales, cada una con credenciales reales para probarla en vivo:
 - **GCP**: autenticación real (OAuth2 JWT-bearer, RFC 7523 — firmado con
-  `crypto/rsa` puro, sin SDK) y `ListInstances` real vía Compute Engine
-  `aggregatedList` (`internal/adapters/gcp`). El resto (`CreateInstance`
-  y las otras tres `List*`) sigue `ErrNotImplemented`.
+  `crypto/rsa` puro, sin SDK), `ListInstances` real vía Compute Engine
+  `aggregatedList`, y **`CreateInstance` real** — el primer método
+  `Create*` de todo el sistema de adapters que crea infraestructura de
+  verdad, no solo la descubre (`internal/adapters/gcp`). `instances.insert`
+  devuelve una Operation asíncrona; `operations.go` la sondea hasta `DONE`
+  con un error claro si falla (no solo timeout) — pieza que no existía en
+  ningún lado del código antes de esto. Verificado en vivo: creó, confirmó
+  y borró una `e2-micro` real. Las otras tres `List*` siguen
+  `ErrNotImplemented`.
 - **Vercel**: `ListInstances` real (`GET /v9/projects`) y `GetCostReport`
   real (`GET /v1/billing/charges`, formato FOCUS v1.3) — ver
   `internal/adapters/vercel`. El resto (`CreateInstance` y las otras tres
@@ -1263,8 +1282,9 @@ parciales, cada una con credenciales reales para probarla en vivo:
   datos gestionadas/buckets en el sentido que modela este contrato.
 
 De los 45 métodos `Create*`/`List*`/`GetCostReport` entre los 5 adapters,
-3 llaman de verdad a una API real hoy (`GCP.ListInstances`,
-`Vercel.ListInstances`, `Vercel.GetCostReport`) — el contrato
+4 llaman de verdad a una API real hoy (`GCP.ListInstances`,
+`GCP.CreateInstance`, `Vercel.ListInstances`, `Vercel.GetCostReport`) — el
+contrato
 (`ProviderAdapter`, specs, capabilities) ya está listo para que el resto
 se agregue adapter por adapter sin tocar nada más del sistema.
 

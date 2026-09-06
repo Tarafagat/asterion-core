@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	langparser "github.com/Tarafagat/asterion-language/parser"
+	"github.com/Tarafagat/asterion-language/providerspec"
 	langsemantic "github.com/Tarafagat/asterion-language/semantic"
 
 	"asterion-core/internal/coreclient"
@@ -14,19 +15,20 @@ import (
 
 // languageCmd integra Asterion Language dentro de este CLI — ver el
 // repo hermano github.com/Tarafagat/asterion-language (clonado al lado de
-// este, igual que asterion-lab y asterion-plugin-contract). Solo 'check'
-// existe hoy: lexa, parsea y valida referencias/capabilities — nunca toca
-// infraestructura. 'plan'/'apply' esperan a que exista el traductor hacia
-// LabSpec/APC/ProvisioningRequest (ver la propuesta de integración del
-// audit de Asterion Language) — no están implementados todavía, a
-// propósito, siguiendo el mismo criterio de fases que ya se usó para
-// Asterion Lab y el Plugin Contract.
+// este, igual que asterion-lab y asterion-plugin-contract). 'check' lexa,
+// parsea y valida referencias/capabilities sin tocar infraestructura;
+// 'apply' además compila (providerspec.CompileInstances) y crea de
+// verdad — hoy solo Provider.gcp.instance(...), el único recurso con un
+// adapter real del otro lado (ver internal/adapters/gcp). 'plan' (un DAG
+// real de múltiples recursos con orden de dependencias) sigue sin existir,
+// a propósito — esta fase aplica un recurso a la vez, en el orden en que
+// aparecen en el archivo.
 func languageCmd() *cobra.Command {
 	root := &cobra.Command{
 		Use:   "language",
-		Short: "Asterion Language: valida código declarativo de infraestructura (fase check — plan/apply todavía no existen)",
+		Short: "Asterion Language: valida y aplica código declarativo de infraestructura (hoy: check + apply de instancias GCP)",
 	}
-	root.AddCommand(languageCheckCmd())
+	root.AddCommand(languageCheckCmd(), languageApplyCmd())
 	return root
 }
 
@@ -64,6 +66,132 @@ func runLanguageCheck(path string) error {
 
 	fmt.Printf("✓ %s — %d statement(s), sin errores\n", path, len(prog.Statements))
 	return nil
+}
+
+func languageApplyCmd() *cobra.Command {
+	var credentialsFile string
+	var dryRun bool
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "apply <archivo.asterion>",
+		Short: "Compila y crea de verdad los recursos que el archivo describe (hoy: instancias de GCP)",
+		Long: "Corre check primero (nunca aplica un archivo que no compila o no pasa la\n" +
+			"validación semántica) y después crea de verdad, vía el mismo servicio de\n" +
+			"adapters que 'asterion providers'/'asterion capabilities' (localhost:8090 por\n" +
+			"default) — nunca habla directo con el SDK de ningún proveedor. Aplica un\n" +
+			"recurso a la vez, en el orden en que aparecen en el archivo — todavía no hay\n" +
+			"un DAG de dependencias entre varios.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLanguageApply(args[0], credentialsFile, dryRun, asJSON)
+		},
+	}
+	cmd.Flags().StringVar(&credentialsFile, "credentials-file", "",
+		"Ruta al archivo de credenciales del proveedor (para GCP: el JSON de la service account) — obligatorio salvo con --dry-run")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Solo compila y muestra qué se crearía, sin llamar a ningún proveedor")
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el resultado como JSON en vez de texto")
+	return cmd
+}
+
+func runLanguageApply(path, credentialsFile string, dryRun, asJSON bool) error {
+	src, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("no pude leer %s: %w", path, err)
+	}
+
+	prog, diags := langparser.Parse(src, path)
+	if diags.HasErrors() {
+		fmt.Print(diags.String())
+		return fmt.Errorf("%s no compila", path)
+	}
+
+	resolver, source := resolveCapabilityResolver()
+	if !asJSON {
+		fmt.Printf("(capabilities: %s)\n", source)
+	}
+	semDiags := langsemantic.NewAnalyzer(resolver).Analyze(prog)
+	if semDiags.HasErrors() {
+		fmt.Print(semDiags.String())
+		return fmt.Errorf("%s no pasó la validación semántica", path)
+	}
+
+	specs, compileDiags := providerspec.CompileInstances(prog)
+	if compileDiags.HasErrors() {
+		fmt.Print(compileDiags.String())
+		return fmt.Errorf("%s no se pudo compilar a recursos aplicables", path)
+	}
+	if len(specs) == 0 {
+		fmt.Println("Este archivo no declara ninguna instancia de un proveedor soportado todavía (hoy: Provider.gcp.instance) — nada que aplicar.")
+		return nil
+	}
+
+	if dryRun {
+		if asJSON {
+			printJSON(specs)
+			return nil
+		}
+		fmt.Printf("Se crearían %d recurso(s) (--dry-run, no se llamó a ningún proveedor):\n", len(specs))
+		for _, spec := range specs {
+			fmt.Printf("  %s (%s) — zona/región %s, shape %s, imagen %s\n", spec.Name, spec.Provider, spec.Region, spec.ShapeCode, spec.Image)
+		}
+		return nil
+	}
+
+	if credentialsFile == "" {
+		return fmt.Errorf("falta --credentials-file (para GCP: el JSON de la service account) — hace falta para crear algo real, salvo con --dry-run")
+	}
+	credentialsRaw, err := os.ReadFile(credentialsFile)
+	if err != nil {
+		return fmt.Errorf("no pude leer %s: %w", credentialsFile, err)
+	}
+
+	client, err := newCoreClient()
+	if err != nil {
+		return err
+	}
+
+	type applyResult struct {
+		Name     string         `json:"name"`
+		Provider string         `json:"provider"`
+		Result   map[string]any `json:"result,omitempty"`
+		Error    string         `json:"error,omitempty"`
+	}
+	results := make([]applyResult, 0, len(specs))
+	var firstErr error
+	for _, spec := range specs {
+		body := map[string]any{
+			"name":             spec.Name,
+			"region":           spec.Region,
+			"shape_code":       spec.ShapeCode,
+			"image_id":         spec.Image,
+			"network_ext_id":   spec.Network,
+			"subnet_ext_id":    spec.Subnet,
+			"assign_public_ip": spec.AssignPublicIP,
+			// GCP-específico por ahora — no existe todavía una abstracción de
+			// credenciales multi-proveedor real de este lado (ver "fuera de
+			// esta vuelta" del plan).
+			"credentials": map[string]string{"service_account_json": string(credentialsRaw)},
+		}
+		result, applyErr := client.CreateInstance(spec.Provider, body)
+		r := applyResult{Name: spec.Name, Provider: spec.Provider, Result: result}
+		if applyErr != nil {
+			r.Error = applyErr.Error()
+			if firstErr == nil {
+				firstErr = fmt.Errorf("%s: %w", spec.Name, applyErr)
+			}
+			if !asJSON {
+				fmt.Printf("✗ %s (%s) — %s\n", spec.Name, spec.Provider, applyErr)
+			}
+		} else if !asJSON {
+			fmt.Printf("✓ %s (%s) — external_id=%v status=%v\n", spec.Name, spec.Provider, result["external_id"], result["status"])
+		}
+		results = append(results, r)
+	}
+
+	if asJSON {
+		printJSON(results)
+	}
+	return firstErr
 }
 
 // resolveCapabilityResolver intenta hablarle al servicio real de adapters

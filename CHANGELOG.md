@@ -9,6 +9,33 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
+- **`GCP.CreateInstance` real — el primer método `Create*` de todo el
+  sistema de adapters que crea infraestructura de verdad** (antes solo
+  `ListInstances`/`GetCostReport` de GCP/Vercel llamaban a una API real,
+  y solo para descubrir, nunca para crear). Usa el scope de escritura de
+  Compute Engine (`compute`, nuevo — `ListInstances` solo pedía
+  `compute.readonly`); `instances.insert` devuelve una Operation
+  asíncrona, así que se sumó `internal/adapters/gcp/operations.go`
+  (`waitForZoneOperation`) — el sondeo hasta `DONE` con error claro si la
+  operación falla, pieza que no existía en ningún lado del código antes
+  de esto. Al terminar, lee el estado real de la instancia (nunca asume
+  "corriendo" solo porque la operación llegó a `DONE`). 6 tests nuevos
+  con `httptest.Server` (request exacto, ciclo de sondeo, operación que
+  falla). Verificado en vivo contra una cuenta real de GCP: creó,
+  confirmó (`ListInstances`) y borró una instancia `e2-micro`.
+- **`asterion language apply` — Asterion Language deja de ser solo
+  `check`.** Nuevo método de escritura en `internal/coreclient`
+  (`CreateInstance`, `POST /adapters/{provider}/instances` — antes el
+  cliente era 100% de solo lectura). El nuevo subcomando compila el
+  `.asterion` con el paquete `providerspec` del repo hermano
+  (`asterion-language`) — hoy solo `Provider.gcp.instance(...)`, el único
+  recurso con un adapter real del otro lado — y llama de verdad al
+  servicio de adapters; `--dry-run` compila y muestra qué se crearía sin
+  llamar a nada. Verificado en vivo de punta a punta: `check` → `apply`
+  (sin `--dry-run`) creó, confirmó y borró una `e2-micro` real a partir
+  de `examples/gcp_instance.asterion`.
+
+### Added
 - **Aprovisionamiento de usuarios de sistema, uniforme entre
   proveedores (`internal/osuser` + `asterion local user`).** El problema:
   después de crear una instancia con Asterion, no había forma uniforme de

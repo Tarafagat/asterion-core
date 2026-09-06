@@ -1,11 +1,14 @@
 // Package gcp implementa ProviderAdapter para Google Cloud. Discovery de
-// instancias (ListInstances) ya está cableado de verdad contra la API real
-// de Compute Engine — ver auth.go para el flujo de autenticación. El resto
-// (Create*, ListNetworks/ListManagedDatabases/ListBuckets, GetCostReport)
+// instancias (ListInstances) y CreateInstance ya están cableados de verdad
+// contra la API real de Compute Engine — ver auth.go para el flujo de
+// autenticación y operations.go para la espera de la Operation asíncrona
+// que devuelve instances.insert. El resto (CreateNetwork/CreateManagedDatabase/
+// CreateBucket, ListNetworks/ListManagedDatabases/ListBuckets, GetCostReport)
 // sigue como stub, mismo estado que internal/adapters/aws.
 package gcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,10 +20,19 @@ import (
 	"asterion-core/internal/capabilities"
 )
 
-// computeReadonlyScope alcanza para listar instancias (GET) — no se pide
-// el scope de escritura ("compute", sin ".readonly") porque este adapter
-// hoy solo hace discovery, nunca crea/modifica nada en GCP.
+// computeReadonlyScope alcanza para listar instancias (GET) — ListInstances
+// nunca crea/modifica nada, así que no necesita el scope de escritura.
 const computeReadonlyScope = "https://www.googleapis.com/auth/compute.readonly"
+
+// computeScope es el scope de lectura+escritura — lo necesita CreateInstance
+// para poder llamar a instances.insert (compute.readonly lo rechazaría).
+const computeScope = "https://www.googleapis.com/auth/compute"
+
+// computeAPIBaseURL es var (no const) a propósito — mismo criterio que
+// projectsURL en internal/adapters/vercel: los tests la apuntan a un
+// httptest.Server y la restauran al terminar, sin tocar ninguna llamada
+// real a Compute Engine.
+var computeAPIBaseURL = "https://www.googleapis.com/compute/v1"
 
 type Adapter struct{}
 
@@ -44,8 +56,151 @@ func (a *Adapter) Capabilities() capabilities.Set {
 	)
 }
 
+// CreateInstance crea una VM real en Compute Engine. spec.Region se usa
+// como ZONA (ej. "us-central1-a") — a propósito: InstanceSpec es un
+// contrato compartido por los 5 adapters y no tiene un campo Zone
+// dedicado; GCP es el único de los cinco donde este campo necesita ser
+// una zona en vez de una región, porque instances.insert exige zona.
+// spec.ImageID va tal cual como sourceImage (ej.
+// "projects/debian-cloud/global/images/family/debian-12") — este adapter
+// no resuelve alias de imagen, el caller manda la ruta completa de GCP.
+//
+// instances.insert no crea la VM al toque: devuelve una Operation
+// asíncrona que hay que esperar (ver waitForZoneOperation en
+// operations.go) — a diferencia de ListInstances, que es una sola
+// llamada de lectura.
 func (a *Adapter) CreateInstance(ctx context.Context, spec adapters.InstanceSpec) (adapters.InstanceResult, error) {
-	return adapters.InstanceResult{}, adapters.ErrNotImplemented
+	serviceAccountJSON := spec.Credentials["service_account_json"]
+	if serviceAccountJSON == "" {
+		return adapters.InstanceResult{}, fmt.Errorf("gcp: falta 'service_account_json' en las credenciales")
+	}
+	key, err := parseServiceAccountKey(serviceAccountJSON)
+	if err != nil {
+		return adapters.InstanceResult{}, err
+	}
+	zone := spec.Region
+	if zone == "" {
+		return adapters.InstanceResult{}, fmt.Errorf("gcp: falta la zona (spec.region, ej. \"us-central1-a\")")
+	}
+
+	token, err := accessToken(ctx, key, computeScope)
+	if err != nil {
+		return adapters.InstanceResult{}, err
+	}
+
+	network := spec.NetworkExtID
+	if network == "" {
+		network = "global/networks/default"
+	}
+
+	type disk struct {
+		Boot             bool `json:"boot"`
+		AutoDelete       bool `json:"autoDelete"`
+		InitializeParams struct {
+			SourceImage string `json:"sourceImage"`
+		} `json:"initializeParams"`
+	}
+	type accessConfig struct {
+		Type string `json:"type"`
+		Name string `json:"name"`
+	}
+	type networkInterface struct {
+		Network       string         `json:"network"`
+		Subnetwork    string         `json:"subnetwork,omitempty"`
+		AccessConfigs []accessConfig `json:"accessConfigs,omitempty"`
+	}
+	requestBody := struct {
+		Name              string             `json:"name"`
+		MachineType       string             `json:"machineType"`
+		Disks             []disk             `json:"disks"`
+		NetworkInterfaces []networkInterface `json:"networkInterfaces"`
+	}{
+		Name:        spec.Name,
+		MachineType: fmt.Sprintf("zones/%s/machineTypes/%s", zone, spec.ShapeCode),
+	}
+	requestBody.Disks = []disk{{Boot: true, AutoDelete: true}}
+	requestBody.Disks[0].InitializeParams.SourceImage = spec.ImageID
+	iface := networkInterface{Network: network, Subnetwork: spec.SubnetExtID}
+	if spec.AssignPublicIP {
+		iface.AccessConfigs = []accessConfig{{Type: "ONE_TO_ONE_NAT", Name: "External NAT"}}
+	}
+	requestBody.NetworkInterfaces = []networkInterface{iface}
+
+	payload, err := json.Marshal(requestBody)
+	if err != nil {
+		return adapters.InstanceResult{}, err
+	}
+
+	insertURL := fmt.Sprintf("%s/projects/%s/zones/%s/instances", computeAPIBaseURL, key.ProjectID, zone)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, insertURL, bytes.NewReader(payload))
+	if err != nil {
+		return adapters.InstanceResult{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return adapters.InstanceResult{}, fmt.Errorf("gcp: no se pudo conectar a Compute Engine: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	if err != nil {
+		return adapters.InstanceResult{}, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return adapters.InstanceResult{}, fmt.Errorf("gcp: Compute Engine respondió %d al crear la instancia: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var operation struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(body, &operation); err != nil || operation.Name == "" {
+		return adapters.InstanceResult{}, fmt.Errorf("gcp: no pude interpretar la Operation devuelta por instances.insert: %s", strings.TrimSpace(string(body)))
+	}
+
+	if err := waitForZoneOperation(ctx, token, key.ProjectID, zone, operation.Name); err != nil {
+		return adapters.InstanceResult{}, err
+	}
+
+	return getInstance(ctx, token, key.ProjectID, zone, spec.Name)
+}
+
+// getInstance lee el estado real de la instancia recién creada — no se
+// asume "RUNNING" solo porque la Operation terminó DONE (DONE significa
+// "la API terminó de procesar la solicitud", no necesariamente que la VM
+// ya esté corriendo — por ejemplo puede quedar en PROVISIONING/STAGING).
+func getInstance(ctx context.Context, token, projectID, zone, name string) (adapters.InstanceResult, error) {
+	requestURL := fmt.Sprintf("%s/projects/%s/zones/%s/instances/%s", computeAPIBaseURL, projectID, zone, name)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return adapters.InstanceResult{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return adapters.InstanceResult{}, fmt.Errorf("gcp: no se pudo conectar a Compute Engine: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4*1024*1024))
+	if err != nil {
+		return adapters.InstanceResult{}, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		return adapters.InstanceResult{}, fmt.Errorf("gcp: Compute Engine respondió %d al leer la instancia recién creada: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var parsed struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+	}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return adapters.InstanceResult{}, fmt.Errorf("gcp: no pude interpretar la respuesta de Compute Engine: %w", err)
+	}
+	return adapters.InstanceResult{ExternalID: parsed.Name, Status: strings.ToLower(parsed.Status)}, nil
 }
 
 func (a *Adapter) CreateNetwork(ctx context.Context, spec adapters.NetworkSpec) (adapters.NetworkResult, error) {
@@ -81,7 +236,7 @@ func (a *Adapter) ListInstances(ctx context.Context, q adapters.DiscoveryQuery) 
 	// directo, solo de zona vía el parámetro 'filter') — devuelve el
 	// proyecto completo, igual que ListInstances de Vercel devuelve todos
 	// los proyectos de la cuenta.
-	requestURL := fmt.Sprintf("https://www.googleapis.com/compute/v1/projects/%s/aggregated/instances", key.ProjectID)
+	requestURL := fmt.Sprintf("%s/projects/%s/aggregated/instances", computeAPIBaseURL, key.ProjectID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	if err != nil {
 		return nil, err
