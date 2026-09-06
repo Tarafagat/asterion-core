@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 // Client es el cliente HTTP de la API de Asterion. TokenFunc se llama antes
@@ -304,5 +305,40 @@ func (c *Client) ConfirmProvisioningRequest(requestID int) (map[string]any, erro
 func (c *Client) ApplyProvisioningRequest(requestID int) (map[string]any, error) {
 	var out map[string]any
 	err := c.do(http.MethodPost, fmt.Sprintf("/provisioning-requests/%d/apply", requestID), nil, &out)
+	return out, err
+}
+
+// SearchMarketplacePlugins busca plugins públicos del marketplace de
+// Asterion Cloud (GET /marketplace/plugins) — no requiere sesión (el
+// endpoint es público), pero si TokenFunc resuelve una, cada resultado
+// viene con is_purchased/purchase_required calculados contra ese usuario
+// (ver marketplace_repo._SELECT_WITH_ENTITLEMENT del backend).
+func (c *Client) SearchMarketplacePlugins(q string) ([]map[string]any, error) {
+	path := "/marketplace/plugins"
+	if q != "" {
+		path += "?q=" + url.QueryEscape(q)
+	}
+	var out []map[string]any
+	err := c.do(http.MethodGet, path, nil, &out)
+	return out, err
+}
+
+// GetMarketplacePlugin devuelve el detalle de un plugin del marketplace por
+// su slug (GET /marketplace/plugins/{slug}) — repo_url viene nil
+// (purchase_required=true) si es de pago y el usuario autenticado no lo
+// compró ni lo publicó.
+func (c *Client) GetMarketplacePlugin(slug string) (map[string]any, error) {
+	var out map[string]any
+	err := c.do(http.MethodGet, fmt.Sprintf("/marketplace/plugins/%s", slug), nil, &out)
+	return out, err
+}
+
+// CheckoutMarketplacePlugin inicia la compra de un plugin pago del
+// marketplace (POST /marketplace/plugins/{slug}/checkout) — devuelve
+// init_point, la URL de Checkout Pro de MercadoPago para completar el pago
+// en el navegador. Requiere sesión.
+func (c *Client) CheckoutMarketplacePlugin(slug string) (map[string]any, error) {
+	var out map[string]any
+	err := c.do(http.MethodPost, fmt.Sprintf("/marketplace/plugins/%s/checkout", slug), nil, &out)
 	return out, err
 }

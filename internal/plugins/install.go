@@ -10,6 +10,8 @@ import (
 	"time"
 
 	apc "github.com/Tarafagat/asterion-plugin-contract/apc"
+
+	"asterion-core/internal/apiclient"
 )
 
 var repoNamePattern = regexp.MustCompile(`([a-zA-Z0-9_-]+?)(\.git)?/?$`)
@@ -169,6 +171,37 @@ func InstallLinked(dirPath, nameOverride string) (Installed, error) {
 		Status:      "stopped",
 		InstalledAt: time.Now(),
 	}
+	if err := Save(installed); err != nil {
+		return Installed{}, err
+	}
+	return installed, nil
+}
+
+// InstallFromMarketplace resuelve un plugin del marketplace de Asterion
+// Cloud por su slug (GET /marketplace/plugins/{slug}) y lo instala,
+// delegando en Install con su repo_url real. Si es de pago y el usuario
+// autenticado no lo compró, la API nunca entrega el repo_url real (queda
+// null, ver purchase_required en el backend) — se corta acá con un
+// mensaje claro en vez de que Install falle más abajo con un error de git
+// clone confuso contra una URL vacía.
+func InstallFromMarketplace(client *apiclient.Client, slug, nameOverride string) (Installed, error) {
+	plugin, err := client.GetMarketplacePlugin(slug)
+	if err != nil {
+		return Installed{}, err
+	}
+	if purchaseRequired, _ := plugin["purchase_required"].(bool); purchaseRequired {
+		return Installed{}, fmt.Errorf("%q es un plugin de pago y todavía no lo compraste — 'asterion marketplace buy %s' primero", slug, slug)
+	}
+	repoURL, _ := plugin["repo_url"].(string)
+	if repoURL == "" {
+		return Installed{}, fmt.Errorf("%q no tiene una URL de repo configurada en el marketplace", slug)
+	}
+
+	installed, err := Install(repoURL, nameOverride, false)
+	if err != nil {
+		return Installed{}, err
+	}
+	installed.MarketplaceSlug = slug
 	if err := Save(installed); err != nil {
 		return Installed{}, err
 	}

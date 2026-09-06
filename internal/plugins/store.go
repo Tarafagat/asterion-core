@@ -38,9 +38,14 @@ type Installed struct {
 	// IsMain marca el plugin que se publica con 'asterion local tunnel
 	// start' cuando no se especifica --port ni --plugin — nunca más de
 	// uno a la vez, ver SetMain.
-	IsMain      bool      `json:"is_main,omitempty"`
-	InstalledAt time.Time `json:"installed_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	IsMain bool `json:"is_main,omitempty"`
+	// MarketplaceSlug queda seteado cuando este plugin se instaló con
+	// 'asterion marketplace install <slug>' (en vez de 'plugin install
+	// <repo-url>' directo) — trazabilidad hacia el catálogo de Asterion
+	// Cloud, no afecta en nada cómo corre el plugin localmente.
+	MarketplaceSlug string    `json:"marketplace_slug,omitempty"`
+	InstalledAt     time.Time `json:"installed_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // NewExternalRef genera el identificador local de un plugin nuevo:

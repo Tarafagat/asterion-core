@@ -57,6 +57,7 @@ func main() {
 		containerCmd(),
 		imagesCmd(),
 		pluginsCmd(),
+		marketplaceCmd(),
 		languageCmd(),
 		installCmd(),
 		upgradeCmd(),
