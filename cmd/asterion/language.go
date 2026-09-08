@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 
@@ -18,8 +19,9 @@ import (
 // este, igual que asterion-lab y asterion-plugin-contract). 'check' lexa,
 // parsea y valida referencias/capabilities sin tocar infraestructura;
 // 'apply' además compila (providerspec.CompileInstances) y crea de
-// verdad — hoy solo Provider.gcp.instance(...), el único recurso con un
-// adapter real del otro lado (ver internal/adapters/gcp). 'plan' (un DAG
+// verdad — hoy Provider.gcp.instance(...) y Provider.oci.instance(...),
+// los únicos dos con un adapter real del otro lado (ver
+// internal/adapters/gcp e internal/adapters/oci). 'plan' (un DAG
 // real de múltiples recursos con orden de dependencias) sigue sin existir,
 // a propósito — esta fase aplica un recurso a la vez, en el orden en que
 // aparecen en el archivo.
@@ -87,10 +89,31 @@ func languageApplyCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&credentialsFile, "credentials-file", "",
-		"Ruta al archivo de credenciales del proveedor (para GCP: el JSON de la service account) — obligatorio salvo con --dry-run")
+		"Ruta al archivo de credenciales del proveedor — para GCP, el JSON de la service account tal cual; "+
+			"para OCI, un JSON propio con user_ocid/tenancy_ocid/fingerprint/private_key — obligatorio salvo con --dry-run")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Solo compila y muestra qué se crearía, sin llamar a ningún proveedor")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el resultado como JSON en vez de texto")
 	return cmd
+}
+
+// buildCredentials arma el mapa de credenciales que espera cada adapter a
+// partir del contenido crudo de --credentials-file — cada proveedor tiene
+// su propia forma (GCP: un único JSON de service account que se manda tal
+// cual bajo una sola clave; OCI: cuatro campos sueltos), no existe todavía
+// una abstracción de credenciales multi-proveedor real de este lado.
+func buildCredentials(provider string, raw []byte) (map[string]string, error) {
+	switch provider {
+	case "gcp":
+		return map[string]string{"service_account_json": string(raw)}, nil
+	case "oci":
+		var creds map[string]string
+		if err := json.Unmarshal(raw, &creds); err != nil {
+			return nil, fmt.Errorf("--credentials-file para oci debe ser un JSON con user_ocid/tenancy_ocid/fingerprint/private_key: %w", err)
+		}
+		return creds, nil
+	default:
+		return nil, fmt.Errorf("todavía no sé qué forma de credenciales espera el proveedor %q", provider)
+	}
 }
 
 func runLanguageApply(path, credentialsFile string, dryRun, asJSON bool) error {
@@ -121,7 +144,7 @@ func runLanguageApply(path, credentialsFile string, dryRun, asJSON bool) error {
 		return fmt.Errorf("%s no se pudo compilar a recursos aplicables", path)
 	}
 	if len(specs) == 0 {
-		fmt.Println("Este archivo no declara ninguna instancia de un proveedor soportado todavía (hoy: Provider.gcp.instance) — nada que aplicar.")
+		fmt.Println("Este archivo no declara ninguna instancia de un proveedor soportado todavía (hoy: Provider.gcp.instance / Provider.oci.instance) — nada que aplicar.")
 		return nil
 	}
 
@@ -159,6 +182,10 @@ func runLanguageApply(path, credentialsFile string, dryRun, asJSON bool) error {
 	results := make([]applyResult, 0, len(specs))
 	var firstErr error
 	for _, spec := range specs {
+		credentials, credErr := buildCredentials(spec.Provider, credentialsRaw)
+		if credErr != nil {
+			return credErr
+		}
 		body := map[string]any{
 			"name":             spec.Name,
 			"region":           spec.Region,
@@ -167,10 +194,7 @@ func runLanguageApply(path, credentialsFile string, dryRun, asJSON bool) error {
 			"network_ext_id":   spec.Network,
 			"subnet_ext_id":    spec.Subnet,
 			"assign_public_ip": spec.AssignPublicIP,
-			// GCP-específico por ahora — no existe todavía una abstracción de
-			// credenciales multi-proveedor real de este lado (ver "fuera de
-			// esta vuelta" del plan).
-			"credentials": map[string]string{"service_account_json": string(credentialsRaw)},
+			"credentials":      credentials,
 		}
 		result, applyErr := client.CreateInstance(spec.Provider, body)
 		r := applyResult{Name: spec.Name, Provider: spec.Provider, Result: result}
