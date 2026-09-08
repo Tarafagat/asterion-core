@@ -78,7 +78,7 @@ func resolveTunnelPort(pluginFlag string) (port int, source string, err error) {
 		return main.Port, fmt.Sprintf("plugin principal %q", main.Name), nil
 	}
 
-	if s, alive, err := localserve.Status(); err != nil {
+	if s, alive, err := localserve.Status(localserve.LocalServeName); err != nil {
 		return 0, "", err
 	} else if alive {
 		return s.Port, "local serve", nil

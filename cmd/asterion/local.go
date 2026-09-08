@@ -49,7 +49,7 @@ func localStatusCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			state, running, _ := localserve.Status()
+			state, running, _ := localserve.Status(localserve.LocalServeName)
 			var localServe any
 			if running {
 				localServe = state
@@ -119,7 +119,7 @@ func localDoctorCmd() *cobra.Command {
 // dashboard terminó escuchando en otro puerto, y doctor reportaría un falso
 // negativo ("nada responde en 8091") aunque el dashboard esté sano.
 func applyLiveServicePort(cfg *runtime.Config) {
-	if state, running, _ := localserve.Status(); running && state.Port != 0 {
+	if state, running, _ := localserve.Status(localserve.LocalServeName); running && state.Port != 0 {
 		cfg.ServicePort = state.Port
 	}
 }
@@ -308,7 +308,7 @@ func localServeCmd() *cobra.Command {
 			}
 
 			if background {
-				if _, alive, statusErr := localserve.Status(); statusErr == nil && alive {
+				if _, alive, statusErr := localserve.Status(localserve.LocalServeName); statusErr == nil && alive {
 					return fmt.Errorf("el dashboard local ya está corriendo en segundo plano — 'asterion local stop' primero si querés reiniciarlo")
 				}
 			}
@@ -375,7 +375,7 @@ func runBackendCoreBackground(backendCoreDir, python string, explicitPort int) e
 		port = p
 	}
 
-	logPath, err := localserve.LogPath()
+	logPath, err := localserve.LogPath(localserve.LocalServeName)
 	if err != nil {
 		return err
 	}
@@ -398,7 +398,7 @@ func runBackendCoreBackground(backendCoreDir, python string, explicitPort int) e
 	pid := run.Process.Pid
 	_ = run.Process.Release()
 
-	if err := localserve.SaveState(localserve.State{
+	if err := localserve.SaveState(localserve.LocalServeName, localserve.State{
 		PID: pid, Port: port, LogPath: logPath, StartedAt: time.Now(),
 	}); err != nil {
 		return fmt.Errorf("el proceso arrancó (pid %d) pero no pude guardar su estado: %w", pid, err)
@@ -439,7 +439,7 @@ func localStopCmd() *cobra.Command {
 		Use:   "stop",
 		Short: "Detiene el dashboard local arrancado con 'local serve --background'",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			state, err := localserve.Stop()
+			state, err := localserve.Stop(localserve.LocalServeName)
 			if err != nil {
 				return err
 			}
@@ -488,12 +488,12 @@ func localRestartCmd() *cobra.Command {
 			}
 
 			preferredPort := port
-			if state, alive, _ := localserve.Status(); alive {
+			if state, alive, _ := localserve.Status(localserve.LocalServeName); alive {
 				if preferredPort == 0 {
 					preferredPort = state.Port
 				}
 				fmt.Printf("Deteniendo dashboard local (pid %d, puerto %d)...\n", state.PID, state.Port)
-				if _, err := localserve.Stop(); err != nil {
+				if _, err := localserve.Stop(localserve.LocalServeName); err != nil {
 					return err
 				}
 				waitForPortFree(state.Port, 5*time.Second)

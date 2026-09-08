@@ -797,7 +797,7 @@ func reportHeartbeat(apiBaseURL, apiKey string, identity cloudmeta.Identity) ([]
 	// default — nada de esto se manda a Cloud hasta que el usuario lo
 	// prenda a mano ('asterion local config set report_local_serve true').
 	if cfg, err := asterionruntime.LoadConfig(); err == nil && cfg.ReportLocalServe {
-		if state, running, _ := localserve.Status(); running {
+		if state, running, _ := localserve.Status(localserve.LocalServeName); running {
 			payload["local_serve_port"] = state.Port
 		}
 		if tstate, running, _ := tunnel.Status(); running && tstate.URL != "" {

@@ -23,7 +23,7 @@ func localRouteCmd() *cobra.Command {
 		Use:   "route",
 		Short: "Muestra la ruta local (puerto de 'local serve', túnel activo) y si se está reportando a Asterion Cloud",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			serveState, serving, err := localserve.Status()
+			serveState, serving, err := localserve.Status(localserve.LocalServeName)
 			if err != nil {
 				return err
 			}
