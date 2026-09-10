@@ -51,6 +51,7 @@ func main() {
 		coreCmd(),
 		agentRunCmd(),
 		agentCmd(),
+		databaseCmd(),
 		firewallCmd(),
 		labCmd(),
 		vmCmd(),

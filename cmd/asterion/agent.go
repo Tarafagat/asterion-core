@@ -813,28 +813,16 @@ func reportHeartbeat(apiBaseURL, apiKey string, identity cloudmeta.Identity) ([]
 		payload["cloud_native_id"] = identity.NativeID
 	}
 
-	body, _ := json.Marshal(payload)
-	req, err := http.NewRequest(http.MethodPost, apiBaseURL+"/agent/heartbeat", bytes.NewReader(body))
+	respBody, err := agentAPIRequest(context.Background(), apiBaseURL, apiKey, http.MethodPost, "/agent/heartbeat", payload)
 	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Asterion-Api-Key", apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("la API respondió %d al reportar heartbeat", resp.StatusCode)
+		return nil, fmt.Errorf("al reportar heartbeat: %w", err)
 	}
 
 	// Un backend viejo (204 sin body) o cualquier body vacío/no-JSON se
 	// trata como "sin jobs" — nunca como error: el heartbeat en sí ya tuvo
 	// éxito (status < 300), lo único que puede faltar es esta parte nueva.
 	var parsed heartbeatResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return nil, nil
 	}
 	return parsed.PendingJobs, nil
@@ -861,21 +849,9 @@ func reportOnce(apiBaseURL, apiKey string) error {
 		{"network_out_gb", snap.NetworkOutGB},
 	}
 
-	body, _ := json.Marshal(map[string]any{"metrics": metrics})
-	req, err := http.NewRequest(http.MethodPost, apiBaseURL+"/agent/usage-metrics", bytes.NewReader(body))
+	_, err = agentAPIRequest(context.Background(), apiBaseURL, apiKey, http.MethodPost, "/agent/usage-metrics", map[string]any{"metrics": metrics})
 	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Asterion-Api-Key", apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("la API respondió %d al reportar métricas", resp.StatusCode)
+		return fmt.Errorf("al reportar métricas: %w", err)
 	}
 	return nil
 }
