@@ -58,6 +58,6 @@ func status(unitName string) (Unit, error) {
 	}
 	return Unit{
 		Name: unitName, LoadState: lines[0], ActiveState: lines[1], SubState: lines[2], Description: lines[3],
-		Protected: IsProtected(unitName),
+		Protected: IsProtected(unitName), Category: Classify(unitName),
 	}, nil
 }

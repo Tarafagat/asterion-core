@@ -32,12 +32,13 @@ import (
 // calcula acá, no en Cloud, para que exista un único lugar (este paquete)
 // que decida qué está protegido, reusado por CLI, discovery y control.
 type Unit struct {
-	Name        string `json:"name"`
-	LoadState   string `json:"load_state"`
-	ActiveState string `json:"active_state"`
-	SubState    string `json:"sub_state"`
-	Description string `json:"description"`
-	Protected   bool   `json:"protected"`
+	Name        string   `json:"name"`
+	LoadState   string   `json:"load_state"`
+	ActiveState string   `json:"active_state"`
+	SubState    string   `json:"sub_state"`
+	Description string   `json:"description"`
+	Protected   bool     `json:"protected"`
+	Category    Category `json:"category"`
 }
 
 // unitNamePattern: empieza con alfanumérico (nunca '-', para que un nombre

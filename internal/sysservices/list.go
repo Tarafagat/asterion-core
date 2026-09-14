@@ -28,6 +28,7 @@ func List() ([]Unit, error) {
 func annotate(units []Unit) []Unit {
 	for i := range units {
 		units[i].Protected = IsProtected(units[i].Name)
+		units[i].Category = Classify(units[i].Name)
 	}
 	return units
 }
