@@ -10,6 +10,7 @@ import (
 	"asterion-core/internal/dbbackup"
 	"asterion-core/internal/osuser"
 	"asterion-core/internal/safety"
+	"asterion-core/internal/sysservices"
 )
 
 // executeJob corre un PendingJob recibido en la respuesta del heartbeat y
@@ -25,9 +26,45 @@ func executeJob(apiBaseURL, apiKey string, job PendingJob) {
 		executeDatabaseDiscoverJob(apiBaseURL, apiKey, job)
 	case "database_backup":
 		executeDatabaseBackupJob(apiBaseURL, apiKey, job)
+	case "system_service_discover":
+		executeSystemServiceDiscoverJob(apiBaseURL, apiKey, job)
+	case "system_service_control":
+		executeSystemServiceControlJob(apiBaseURL, apiKey, job)
 	default:
 		postJobResult(apiBaseURL, apiKey, job.ID, false, nil, fmt.Sprintf("tipo de job desconocido: %q", job.JobType))
 	}
+}
+
+// executeSystemServiceDiscoverJob no necesita payload — un scan siempre
+// lista TODAS las unidades .service de la máquina, mismo criterio que
+// executeDatabaseDiscoverJob.
+func executeSystemServiceDiscoverJob(apiBaseURL, apiKey string, job PendingJob) {
+	units, err := sysservices.List()
+	if err != nil {
+		postJobResult(apiBaseURL, apiKey, job.ID, false, nil, err.Error())
+		return
+	}
+	postJobResult(apiBaseURL, apiKey, job.ID, true, map[string]any{"units": units}, "")
+}
+
+// executeSystemServiceControlJob: job.Action ya es "restart"/"start"/"stop"
+// (viene directo de la columna ENUM agent_jobs.action) — sysservices.Control
+// revalida todo (acción, nombre, denylist) de punta a punta, así que este
+// executor es puro plumbing: parsear el payload y postear el resultado.
+func executeSystemServiceControlJob(apiBaseURL, apiKey string, job PendingJob) {
+	var payload struct {
+		UnitName string `json:"unit_name"`
+	}
+	if err := json.Unmarshal(job.Payload, &payload); err != nil {
+		postJobResult(apiBaseURL, apiKey, job.ID, false, nil, fmt.Sprintf("payload inválido: %v", err))
+		return
+	}
+	unit, err := sysservices.Control(job.Action, payload.UnitName)
+	if err != nil {
+		postJobResult(apiBaseURL, apiKey, job.ID, false, nil, err.Error())
+		return
+	}
+	postJobResult(apiBaseURL, apiKey, job.ID, true, map[string]any{"unit": unit}, "")
 }
 
 func executeOSUserJob(apiBaseURL, apiKey string, job PendingJob) {

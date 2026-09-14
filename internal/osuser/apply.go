@@ -53,7 +53,7 @@ func Apply(diff *Diff) (*Result, error) {
 	}
 
 	if diff.SudoRule != "" {
-		if err := writeSudoersFile(diff.SudoFilePath, diff.Username, diff.SudoRule); err != nil {
+		if err := WriteSudoersFile(diff.SudoFilePath, diff.Username, diff.SudoRule); err != nil {
 			return nil, fmt.Errorf("no se pudo configurar sudo: %w", err)
 		}
 	}
@@ -95,11 +95,15 @@ func installAuthorizedKey(u *user.User, keyLine string) error {
 	return os.Chown(akPath, uid, gid)
 }
 
-// writeSudoersFile nunca escribe directo el archivo final: arma un
+// WriteSudoersFile nunca escribe directo el archivo final: arma un
 // temporal en el propio /etc/sudoers.d (mismo filesystem, para que el
 // rename final sea atómico) y solo lo instala si `visudo -c` lo valida —
-// una regla de sudo rota nunca llega a tocar el sistema real.
-func writeSudoersFile(path, username, rule string) error {
+// una regla de sudo rota nunca llega a tocar el sistema real. Exportada
+// porque además de este paquete la usa
+// cmd/asterion/agent.go::agentEnableServiceControlCmd (mecanismo genérico
+// de "escribir un sudoers.d validado", no la política del nivel
+// "operador" en sí — esa sigue siendo exclusiva de este paquete).
+func WriteSudoersFile(path, username, rule string) error {
 	content := fmt.Sprintf("%s %s\n", username, rule)
 
 	tmp, err := os.CreateTemp("/etc/sudoers.d", ".asterion-tmp-*")

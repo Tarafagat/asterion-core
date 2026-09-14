@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	"asterion-core/internal/cloudmeta"
 	"asterion-core/internal/localserve"
 	"asterion-core/internal/localstore"
+	"asterion-core/internal/osuser"
 	"asterion-core/internal/plugins"
 	asterionruntime "asterion-core/internal/runtime"
 	"asterion-core/internal/secretbox"
@@ -38,8 +40,86 @@ func agentCmd() *cobra.Command {
 		Use:   "agent",
 		Short: "Estado local del agente instalado (systemd, clave guardada)",
 	}
-	root.AddCommand(agentStatusCmd(), agentRestartCmd())
+	root.AddCommand(agentStatusCmd(), agentRestartCmd(), agentEnableServiceControlCmd(), agentDisableServiceControlCmd())
 	return root
+}
+
+// serviceControlSudoersPrefix es un archivo propio, distinto de los que usa
+// internal/osuser para el nivel "operador" (ver ahí) — evita pisar/chocar
+// si la misma cuenta del sistema alguna vez tiene las dos cosas: un nivel
+// operador de login SSH Y esta grant para el agente.
+const serviceControlSudoersPrefix = "/etc/sudoers.d/asterion-agent-service-control-"
+
+// agentEnableServiceControlCmd le da a UNA cuenta del sistema, ya existente,
+// el sudo angosto que 'system_service_control' necesita: sin esto, un job
+// que Cloud despache para restart/start/stop de un systemd unit va a
+// fallar (systemctl start/stop/restart necesita root; el agente corre sin
+// privilegios vía systemd --user). Tiene que correrse a mano por alguien
+// que YA tiene sudo en esa máquina — nunca algo que Cloud dispare
+// remotamente (Cloud otorgándose más sudo a sí misma sería circular).
+func agentEnableServiceControlCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "enable-service-control <usuario-del-sistema>",
+		Short: "Otorga sudo NOPASSWD, angosto, para systemctl start/stop/restart *.service a UN usuario",
+		Long: "Sin esto, un job 'system_service_control' que Cloud despache para esta instancia\n" +
+			"va a fallar (systemctl start/stop/restart necesita root; el agente corre como un\n" +
+			"usuario sin privilegios vía systemd --user).\n\n" +
+			"Tiene que correrse A MANO, con sudo, por alguien que YA tiene sudo en esta máquina\n" +
+			"— nunca algo que Cloud pueda disparar remotamente.\n\n" +
+			"Nivel de acceso TOTALMENTE APARTE del preset 'operador' de 'asterion local user':\n" +
+			"esa regla es para un usuario de LOGIN por SSH provisionado a mano; esta es para la\n" +
+			"cuenta que corre 'agent-run' todo el tiempo. Cuentas distintas, propósitos\n" +
+			"distintos — no se reusa esa política. La regla queda limitada a *.service y a esos\n" +
+			"3 verbos (ni sudo total, ni 'systemctl status' — leer estado ya no necesita sudo).",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			username := args[0]
+			if os.Geteuid() != 0 {
+				return fmt.Errorf("necesita sudo: corré 'sudo asterion agent enable-service-control %s'", username)
+			}
+			if _, err := user.Lookup(username); err != nil {
+				return fmt.Errorf("%q no es un usuario del sistema válido en esta máquina: %w", username, err)
+			}
+			systemctlPath, err := exec.LookPath("systemctl")
+			if err != nil {
+				return fmt.Errorf("no se encontró systemctl en esta máquina")
+			}
+			rule := fmt.Sprintf(
+				"ALL=(ALL) NOPASSWD: %s start *.service, %s stop *.service, %s restart *.service",
+				systemctlPath, systemctlPath, systemctlPath,
+			)
+			path := serviceControlSudoersPrefix + username
+			if err := osuser.WriteSudoersFile(path, username, rule); err != nil {
+				return err
+			}
+			fmt.Printf("✓ %s puede ahora reiniciar/parar/iniciar unidades .service vía sudo (%s)\n", username, path)
+			fmt.Println("  Para revertir: sudo asterion agent disable-service-control", username)
+			return nil
+		},
+	}
+}
+
+// agentDisableServiceControlCmd revoca lo que otorgó enable-service-control
+// — mismo criterio de "todo opt-in tiene un opt-out igual de fácil" que
+// 'revoke-agent'/'uninstall-agent'/el toggle de remote-management.
+func agentDisableServiceControlCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "disable-service-control <usuario-del-sistema>",
+		Short: "Revoca el sudo otorgado por 'enable-service-control'",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			username := args[0]
+			if os.Geteuid() != 0 {
+				return fmt.Errorf("necesita sudo: corré 'sudo asterion agent disable-service-control %s'", username)
+			}
+			path := serviceControlSudoersPrefix + username
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			fmt.Printf("✓ Revocado (%s)\n", path)
+			return nil
+		},
+	}
 }
 
 func agentStatusCmd() *cobra.Command {

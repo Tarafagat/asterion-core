@@ -64,11 +64,25 @@ type OSUserAdapter struct{}
 func (OSUserAdapter) Name() string                      { return "osuser" }
 func (OSUserAdapter) Capabilities() map[Capability]bool { return applyAndRollback }
 
+// SystemServiceAdapter envuelve internal/sysservices bajo el contrato
+// Adapter — Apply/Rollback quedan ausentes a propósito: "reiniciar un
+// proceso" no tiene un Rollback honesto (no existe "des-reiniciar"), así
+// que este paquete no declara esa capability en vez de simular una que no
+// existe (ver el package doc de internal/sysservices). El control real
+// (start/stop/restart) vive en sysservices.Control, gateado por:
+// validación de nombre + denylist + el doble gate de autorización de Cloud
+// (agent_can_run_job) que ya corrió ANTES de que el job existiera — no por
+// RequireSafeApply.
+type SystemServiceAdapter struct{}
+
+func (SystemServiceAdapter) Name() string                      { return "system-services" }
+func (SystemServiceAdapter) Capabilities() map[Capability]bool { return inspectOnly }
+
 // Registry son todos los adapters de infraestructura local conocidos por
 // Asterion — usado por `asterion local doctor`/`local status` para listar
 // capabilities de forma genérica en vez de mencionar cada adapter a mano.
 func Registry() []Adapter {
-	return []Adapter{UFWAdapter{}, SSHAdapter{}, ReverseProxyAdapter{}, TunnelAdapter{}, OSUserAdapter{}}
+	return []Adapter{UFWAdapter{}, SSHAdapter{}, ReverseProxyAdapter{}, TunnelAdapter{}, OSUserAdapter{}, SystemServiceAdapter{}}
 }
 
 // AssessSSHFirewallRisk es el único lugar donde este paquete "hace" algo
