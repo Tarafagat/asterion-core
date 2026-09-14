@@ -22,6 +22,7 @@ import (
 	"asterion-core/internal/cloudmeta"
 	"asterion-core/internal/localserve"
 	"asterion-core/internal/localstore"
+	"asterion-core/internal/plugins"
 	asterionruntime "asterion-core/internal/runtime"
 	"asterion-core/internal/secretbox"
 	"asterion-core/internal/sysinfo"
@@ -811,6 +812,35 @@ func reportHeartbeat(apiBaseURL, apiKey string, identity cloudmeta.Identity) ([]
 	if identity.Provider != "" {
 		payload["cloud_provider"] = identity.Provider
 		payload["cloud_native_id"] = identity.NativeID
+	}
+
+	// Service Registry (ver plugins.SetServiceName / 'plugin set-service')
+	// — solo instalaciones que se agruparon explícitamente bajo un nombre
+	// de servicio se reportan acá; el resto de los plugins instalados en
+	// esta máquina no aparece. plugins.Status reconcilia el pid guardado
+	// contra si el proceso sigue vivo de verdad antes de reportar, mismo
+	// criterio que local_serve_port/tunnel_url arriba: nunca un dato
+	// cacheado que podría estar mintiendo.
+	if installed, err := plugins.List(); err == nil {
+		var services []map[string]any
+		for _, p := range installed {
+			if p.ServiceName == "" {
+				continue
+			}
+			reconciled, err := plugins.Status(p.Name)
+			if err != nil || reconciled.Status != "running" {
+				continue
+			}
+			services = append(services, map[string]any{
+				"name":         p.ServiceName,
+				"port":         reconciled.Port,
+				"protocol":     "http",
+				"external_ref": p.ExternalRef,
+			})
+		}
+		if len(services) > 0 {
+			payload["services"] = services
+		}
 	}
 
 	respBody, err := agentAPIRequest(context.Background(), apiBaseURL, apiKey, http.MethodPost, "/agent/heartbeat", payload)

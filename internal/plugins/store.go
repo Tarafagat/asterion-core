@@ -43,9 +43,19 @@ type Installed struct {
 	// 'asterion marketplace install <slug>' (en vez de 'plugin install
 	// <repo-url>' directo) — trazabilidad hacia el catálogo de Asterion
 	// Cloud, no afecta en nada cómo corre el plugin localmente.
-	MarketplaceSlug string    `json:"marketplace_slug,omitempty"`
-	InstalledAt     time.Time `json:"installed_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	MarketplaceSlug string `json:"marketplace_slug,omitempty"`
+	// ServiceName agrupa esta instalación bajo un nombre de servicio
+	// lógico (ver 'asterion plugin set-service') — distinto de
+	// ConnectedProjectSlug: ese vincula a un PROYECTO de Cloud, este a un
+	// SERVICIO. Cuando está seteado, cada heartbeat reporta esta
+	// instalación en el Service Registry de Cloud (ver reportHeartbeat en
+	// cmd/asterion/agent.go) para que se pueda contar cuántas réplicas de
+	// este mismo servicio existen entre distintas instancias — vacío
+	// (default) significa "conexión privada normal, no forma parte de
+	// ningún servicio contado".
+	ServiceName string    `json:"service_name,omitempty"`
+	InstalledAt time.Time `json:"installed_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // NewExternalRef genera el identificador local de un plugin nuevo:
@@ -224,6 +234,33 @@ func GetMain() (Installed, bool, error) {
 		}
 	}
 	return Installed{}, false, nil
+}
+
+// SetServiceName marca `name` como parte del servicio lógico
+// `serviceName` — a diferencia de SetMain, no es exclusivo: distintos
+// plugins instalados acá pueden pertenecer a distintos servicios (o al
+// mismo) sin pisarse entre sí.
+func SetServiceName(name, serviceName string) error {
+	installed, err := Get(name)
+	if err != nil {
+		return err
+	}
+	installed.ServiceName = serviceName
+	return Save(installed)
+}
+
+// UnsetServiceName saca a `name` de cualquier servicio al que pertenezca
+// — no-op (sin error) si ya no pertenecía a ninguno.
+func UnsetServiceName(name string) error {
+	installed, err := Get(name)
+	if err != nil {
+		return err
+	}
+	if installed.ServiceName == "" {
+		return nil
+	}
+	installed.ServiceName = ""
+	return Save(installed)
 }
 
 // Remove borra el registro de un plugin instalado (no borra el directorio

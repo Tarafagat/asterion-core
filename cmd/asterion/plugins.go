@@ -62,6 +62,8 @@ func pluginsCmd() *cobra.Command {
 		pluginRemoveCmd(),
 		pluginSetMainCmd(),
 		pluginUnsetMainCmd(),
+		pluginSetServiceCmd(),
+		pluginUnsetServiceCmd(),
 		pluginConfigCmd(),
 		pluginConnectCmd(),
 		pluginDisconnectCmd(),
@@ -469,6 +471,62 @@ func pluginUnsetMainCmd() *cobra.Command {
 				return nil
 			}
 			fmt.Println("✓ Ya no hay ningún plugin marcado como principal")
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el resultado como JSON en vez de texto")
+	return cmd
+}
+
+// pluginSetServiceCmd agrupa esta instalación bajo un nombre de servicio
+// lógico — distinto de 'connect' (que vincula a un PROYECTO de Cloud):
+// esto vincula a un SERVICIO, para que el heartbeat lo reporte al
+// Service Registry y Cloud pueda contar cuántas réplicas de ese mismo
+// servicio existen entre instancias (ver internal/plugins.SetServiceName
+// y reportHeartbeat en agent.go). No exclusivo como set-main: dos
+// plugins distintos pueden pertenecer a dos servicios distintos (o al
+// mismo) sin pisarse.
+func pluginSetServiceCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "set-service <name> <service-name>",
+		Short: "Agrupa esta instalación bajo un nombre de servicio (para el Service Registry de Cloud)",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := plugins.SetServiceName(args[0], args[1]); err != nil {
+				return err
+			}
+			if asJSON {
+				installed, err := plugins.Get(args[0])
+				if err != nil {
+					return err
+				}
+				printJSON(installed)
+				return nil
+			}
+			fmt.Printf("✓ %q ahora forma parte del servicio %q\n", args[0], args[1])
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el registro resultante como JSON en vez de texto")
+	return cmd
+}
+
+func pluginUnsetServiceCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "unset-service <name>",
+		Short: "Saca esta instalación de cualquier servicio al que perteneciera",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := plugins.UnsetServiceName(args[0]); err != nil {
+				return err
+			}
+			if asJSON {
+				printJSON(map[string]any{"unset": true})
+				return nil
+			}
+			fmt.Printf("✓ %q ya no pertenece a ningún servicio\n", args[0])
 			return nil
 		},
 	}

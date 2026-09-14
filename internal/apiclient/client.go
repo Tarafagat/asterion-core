@@ -197,6 +197,16 @@ func (c *Client) ListPlugins(projectSlug string) ([]map[string]any, error) {
 	return out, err
 }
 
+// ListServices consulta el Service Registry de un proyecto
+// (GET /projects/{slug}/services) — servicios con réplicas agregadas de
+// todas las instancias que los reportaron por heartbeat (ver
+// 'plugin set-service' y reportHeartbeat en cmd/asterion/agent.go).
+func (c *Client) ListServices(projectSlug string) ([]map[string]any, error) {
+	var out []map[string]any
+	err := c.do(http.MethodGet, fmt.Sprintf("/projects/%s/services", projectSlug), nil, &out)
+	return out, err
+}
+
 // CreateInstanceAPIKey genera una API key nueva para que asterion agent-run
 // pueda reportar métricas de una instancia (POST /instances/{id}/api-keys).
 // La clave cruda solo se devuelve en esta llamada — no se puede volver a leer.
