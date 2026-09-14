@@ -19,6 +19,7 @@ import (
 	"asterion-core/internal/runtime"
 	"asterion-core/internal/safety"
 	"asterion-core/internal/sysinfo"
+	"asterion-core/internal/sysservices"
 )
 
 // localCmd responde preguntas sobre LA máquina donde corre el CLI —
@@ -32,7 +33,7 @@ func localCmd() *cobra.Command {
 		Use:   "local",
 		Short: "Preguntas sobre esta máquina: qué es y cuánto está usando (datos crudos, sin costo)",
 	}
-	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localRestartCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd(), localTunnelCmd(), localRouteCmd(), localUserCmd(), localSystemServicesCmd())
+	root.AddCommand(localInfoCmd(), localStatsCmd(), localServeCmd(), localStopCmd(), localRestartCmd(), localStatusCmd(), localDoctorCmd(), localConfigCmd(), localAuthCmd(), localTunnelCmd(), localRouteCmd(), localUserCmd())
 	return root
 }
 
@@ -723,7 +724,7 @@ func resolveBackendCoreDir(explicit string) (string, error) {
 }
 
 func localInfoCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "info",
 		Short: "Qué es esta máquina: SO, arquitectura, CPU, RAM y disco totales, si es física/VM/contenedor",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -735,6 +736,67 @@ func localInfoCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.AddCommand(localInfoServicesCmd())
+	return cmd
+}
+
+// localInfoServicesCmd vive bajo `info` (no como `local system-services`
+// aparte) para poder nombrar una unidad puntual con la misma forma que el
+// resto de `local info`: "qué es/qué tiene esta máquina". Ponerlo como
+// `asterion system-services` de nivel superior además chocaría en la
+// cabeza con el comando ya existente y no relacionado `asterion services`
+// (el Service Registry de plugins, ver services.go).
+func localInfoServicesCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "services [nombre-de-unidad]",
+		Short: "Unidades .service de systemd de esta máquina — todas, o una puntual si se nombra",
+		Long: "Sin argumento, lista TODAS las unidades .service que systemd conoce (activas,\n" +
+			"inactivas o failed — no solo las de Asterion). Con un nombre puntual\n" +
+			"(ej. 'nginx.service'), consulta solo esa unidad, sin listar las demás.\n\n" +
+			"Solo lectura, a propósito: no hay 'restart'/'stop'/'start' acá — si ya tenés acceso\n" +
+			"a esta terminal, corré 'systemctl restart <unidad>' directo, es exactamente lo mismo\n" +
+			"sin una capa intermedia. El control REMOTO (desde el dashboard de Asterion Cloud,\n" +
+			"gateado por permisos y auditado) vive en la pestaña 'Servicios del sistema' de cada\n" +
+			"instancia — ver 'asterion agent enable-service-control' para habilitarlo acá.",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 1 {
+				unit, err := sysservices.Get(args[0])
+				if err != nil {
+					return err
+				}
+				if asJSON {
+					printJSON(unit)
+					return nil
+				}
+				printSysServiceLine(unit)
+				return nil
+			}
+			units, err := sysservices.List()
+			if err != nil {
+				return err
+			}
+			if asJSON {
+				printJSON(units)
+				return nil
+			}
+			for _, u := range units {
+				printSysServiceLine(u)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Salida en JSON, para scripts")
+	return cmd
+}
+
+func printSysServiceLine(u sysservices.Unit) {
+	mark := ""
+	if u.Protected {
+		mark = "  [protegida — Asterion Cloud nunca la controla remotamente]"
+	}
+	fmt.Printf("%-45s %-10s %-10s %s%s\n", u.Name, u.ActiveState, u.SubState, u.Description, mark)
 }
 
 func localStatsCmd() *cobra.Command {
