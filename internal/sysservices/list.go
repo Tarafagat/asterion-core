@@ -36,7 +36,7 @@ func annotate(units []Unit) []Unit {
 // Get consulta UNA unidad puntual por nombre — sin sudo (leer estado nunca
 // lo necesita), mismo camino que usa Control() para "verificar" después de
 // actuar (ver status() en control.go). Sirve para nombrar una unidad
-// directo (`asterion local info services <nombre>`) sin tener que listar
+// directo (`asterion services list <nombre>`) sin tener que listar
 // todas para filtrar una sola. Un nombre bien formado pero inexistente no
 // es un error: systemctl devuelve LoadState "not-found" igual que
 // cualquier otra consulta (mismo criterio que parsePlain ya contempla).

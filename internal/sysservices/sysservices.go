@@ -1,7 +1,7 @@
 // Package sysservices es el motor de lectura/control de unidades systemd
 // tipo .service de ESTA máquina — todas las que systemd conoce, no solo las
 // de Asterion. Una sola implementación, compartida entre
-// `asterion local info services` (CLI, esta misma máquina) y el executor
+// `asterion services list` (CLI, esta misma máquina) y el executor
 // de jobs del agente (cmd/asterion/agentjobs.go, disparado desde Asterion
 // Cloud) — nunca duplicada entre los dos.
 //
