@@ -51,6 +51,36 @@ func TestClassify_CaseInsensitive(t *testing.T) {
 	}
 }
 
+func TestClassify_SubstringFallbackForNonSystemdNames(t *testing.T) {
+	// Nombres con forma de label de launchd o de servicio de Windows (sin
+	// ".service") — el match exacto nunca les va a pegar, así que tienen
+	// que resolver por el paso de substring.
+	cases := map[string]Category{
+		"com.vix.cron":        CategorySystem,   // launchd (macOS)
+		"org.cups.cupsd":      CategorySystem,   // launchd (macOS)
+		"com.openssh.sshd":    CategorySystem,   // launchd (macOS)
+		"postgresql-x64-14":   CategoryDatabase, // Windows (instalador oficial)
+		"MySQL80":             CategoryDatabase, // Windows (instalador oficial)
+		"com.docker.docker":   CategoryAPI,      // launchd (macOS, Docker Desktop)
+		"aleatorio-sin-match": CategoryOther,
+	}
+	for name, want := range cases {
+		if got := Classify(name); got != want {
+			t.Errorf("Classify(%q) = %q, want %q", name, got, want)
+		}
+	}
+}
+
+func TestClassify_SubstringFallbackNeverAppliesToServiceSuffixedNames(t *testing.T) {
+	// Un nombre que SÍ termina en ".service" (forma systemd real) nunca
+	// debe pasar por el fallback de substring, aunque contenga una
+	// substring conocida — el match exacto es la única palabra final ahí,
+	// mismo comportamiento que antes de agregar el fallback.
+	if got := Classify("random-cron-job.service"); got != CategoryOther {
+		t.Errorf("Classify(%q) = %q, want %q (no debería pasar por el fallback de substring)", "random-cron-job.service", got, CategoryOther)
+	}
+}
+
 func TestClassify_MoreSpecificListsWinOverSuffixHeuristic(t *testing.T) {
 	// "docker" ya está en apiUnits (lista curada); confirma que no hace
 	// falta la heurística de sufijo para que algo así clasifique bien, y

@@ -54,6 +54,7 @@ var systemUnits = map[string]bool{
 	"chronyd": true, "ntpd": true,
 	"getty": true, "serial-getty": true,
 	"lvm2-monitor": true, "multipathd": true,
+	"cups": true, "cupsd": true,
 }
 
 // databaseUnits: motores de base de datos conocidos por su unidad
@@ -96,6 +97,21 @@ func baseUnitName(name string) string {
 // prueban antes que la heurística de sufijo (más amplia), para que un
 // nombre que casualmente calce con un sufijo de "api" pero ya esté en una
 // lista más específica no se reclasifique.
+//
+// Si el match exacto falla Y el nombre NO tiene forma de unidad systemd
+// (no termina en ".service"), se prueba un segundo paso por substring
+// contra las mismas listas curadas (ver matchBySubstring) — agregado para
+// que nombres de launchd/Windows (que no tienen la forma limpia
+// "nombre.service" de systemd — ej. "com.vix.cron", "postgresql-x64-14",
+// "MySQL80") también clasifiquen bien sin mantener una lista curada nueva
+// por plataforma. El chequeo de sufijo ".service" (no un build tag) es lo
+// que decide si el paso por substring corre — determinístico a partir del
+// nombre, no de en qué SO se compiló — y es lo que mantiene a Linux
+// exactamente como estaba: un nombre systemd real siempre termina en
+// ".service", así que ahí el match exacto sigue siendo la única palabra
+// final, sin el riesgo de falso positivo que sí vale la pena aceptar para
+// plataformas sin esa convención (ver test que prueba justo este caso:
+// "random-cron-job.service" debe seguir siendo CategoryOther).
 func Classify(unitName string) Category {
 	base := baseUnitName(unitName)
 	switch {
@@ -111,5 +127,30 @@ func Classify(unitName string) Category {
 			return CategoryAPI
 		}
 	}
+	if strings.HasSuffix(unitName, ".service") {
+		return CategoryOther
+	}
+	switch {
+	case matchBySubstring(base, systemUnits):
+		return CategorySystem
+	case matchBySubstring(base, databaseUnits):
+		return CategoryDatabase
+	case matchBySubstring(base, apiUnits):
+		return CategoryAPI
+	}
 	return CategoryOther
+}
+
+// matchBySubstring confirma si el nombre CONTIENE (no es igual a) alguna
+// de las claves de la lista curada — best-effort a propósito, mismo
+// criterio de "nunca se inventa una categoría que no se pudo confirmar de
+// verdad" que el resto de este archivo: un falso positivo puntual acá es
+// preferible a mantener una lista curada separada por plataforma.
+func matchBySubstring(base string, known map[string]bool) bool {
+	for key := range known {
+		if strings.Contains(base, key) {
+			return true
+		}
+	}
+	return false
 }

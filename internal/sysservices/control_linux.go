@@ -1,3 +1,5 @@
+//go:build linux
+
 package sysservices
 
 import (
@@ -44,20 +46,33 @@ func Control(action, unitName string) (Unit, error) {
 
 // status consulta una sola unidad — sin sudo, leer estado nunca lo
 // necesita — para el paso "verificar" de Control.
+//
+// A propósito SIN --value: confirmado en vivo contra un systemd real
+// (Ubuntu 24.04) que `--value` no devuelve las líneas en el orden pedido
+// por --property (acá devolvía Description/LoadState/ActiveState/SubState
+// en vez de LoadState/ActiveState/SubState/Description) — asumir orden
+// posicional corrompía silenciosamente los 4 campos. Sin --value, cada
+// línea sale "Propiedad=valor" — se parsea por nombre, así que el orden
+// real que systemd elija devolver ya no importa.
 func status(unitName string) (Unit, error) {
 	out, err := exec.Command(
 		"systemctl", "show", unitName,
-		"--property=LoadState,ActiveState,SubState,Description", "--value",
+		"--property=LoadState,ActiveState,SubState,Description",
 	).Output()
 	if err != nil {
 		return Unit{}, fmt.Errorf("no se pudo verificar el estado de %q después de actuar: %w", unitName, err)
 	}
-	lines := strings.Split(strings.TrimRight(string(out), "\n"), "\n")
-	for len(lines) < 4 {
-		lines = append(lines, "")
+	props := map[string]string{}
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		props[key] = value
 	}
 	return Unit{
-		Name: unitName, LoadState: lines[0], ActiveState: lines[1], SubState: lines[2], Description: lines[3],
+		Name: unitName, LoadState: props["LoadState"], ActiveState: props["ActiveState"],
+		SubState: props["SubState"], Description: props["Description"],
 		Protected: IsProtected(unitName), Category: Classify(unitName),
 	}, nil
 }

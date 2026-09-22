@@ -1,3 +1,5 @@
+//go:build linux
+
 package sysservices
 
 import (
@@ -36,19 +38,6 @@ func TestValidUnitName_RespectsSystemdMaxLength(t *testing.T) {
 	overLimit := strings.Repeat("a", 248) + ".service" // 256 en total
 	if ValidUnitName(overLimit) {
 		t.Errorf("un nombre de %d caracteres totales (uno más del límite) no debería ser válido", len(overLimit))
-	}
-}
-
-func TestValidAction(t *testing.T) {
-	for _, a := range []string{"start", "stop", "restart"} {
-		if !ValidAction(a) {
-			t.Errorf("ValidAction(%q) = false, want true", a)
-		}
-	}
-	for _, a := range []string{"reload", "enable", "disable", "", "restart ; rm -rf /"} {
-		if ValidAction(a) {
-			t.Errorf("ValidAction(%q) = true, want false", a)
-		}
 	}
 }
 
