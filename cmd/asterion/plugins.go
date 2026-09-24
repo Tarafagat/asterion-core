@@ -359,11 +359,26 @@ func pluginBuildCmd() *cobra.Command {
 
 func pluginStartCmd() *cobra.Command {
 	var asJSON bool
+	var build bool
 	cmd := &cobra.Command{
 		Use:   "start <name>",
 		Short: "Arranca el proceso del plugin en un puerto propio y espera a que responda health check",
-		Args:  cobra.ExactArgs(1),
+		Long: "Sin --build (default), arranca el binario/dist QUE YA ESTABAN COMPILADOS — ver\n" +
+			"'asterion plugin build'. Con --build, compila de nuevo (backend + frontend si\n" +
+			"tiene) justo antes de arrancar, mismo criterio y mismo pedido explícito que\n" +
+			"'plugin restart --build'.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if build {
+				fmt.Printf("Compilando %q...\n", args[0])
+				log, err := plugins.Build(args[0])
+				if log != "" {
+					fmt.Println(log)
+				}
+				if err != nil {
+					return err
+				}
+			}
 			installed, err := plugins.Start(args[0])
 			if asJSON {
 				printJSON(installed)
@@ -376,6 +391,7 @@ func pluginStartCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&build, "build", false, "Compilar de nuevo (backend + frontend) antes de arrancar — propaga cambios de código")
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el estado resultante como JSON en vez de texto")
 	return cmd
 }
@@ -409,6 +425,7 @@ func pluginStopCmd() *cobra.Command {
 
 func pluginRestartCmd() *cobra.Command {
 	var asJSON bool
+	var build bool
 	cmd := &cobra.Command{
 		Use:   "restart <name>",
 		Short: "Reinicia el proceso del plugin sin cambiarle el puerto",
@@ -416,9 +433,29 @@ func pluginRestartCmd() *cobra.Command {
 			"'plugin stop' + 'plugin start' a mano, espera a que el proceso viejo termine\n" +
 			"de verdad antes de arrancar el nuevo, así el plugin recupera el mismo puerto\n" +
 			"que tenía (siempre que nada más lo haya tomado mientras estaba parado) en vez\n" +
-			"de que cada reinicio le asigne uno nuevo al azar.",
+			"de que cada reinicio le asigne uno nuevo al azar.\n\n" +
+			"Sin --build (default), reinicia el binario/dist QUE YA ESTABAN COMPILADOS —\n" +
+			"si editaste el código (backend o frontend) desde la última vez que corriste\n" +
+			"'plugin build', esos cambios NO se propagan solos. Con --build, compila de\n" +
+			"nuevo (mismo paso que 'asterion plugin build', backend Go y frontend con\n" +
+			"pnpm si el plugin tiene uno) justo antes de reiniciar — un solo comando para\n" +
+			"el ciclo completo de desarrollo (editar código → build → restart) en vez de\n" +
+			"encadenar 'plugin build' + 'plugin restart' a mano. Sigue siendo un pedido\n" +
+			"explícito del operador cada vez (nunca implícito en un restart sin el flag) —\n" +
+			"mismo criterio que 'plugin build': Asterion no recompila código de un plugin\n" +
+			"sin que se lo pidan puntualmente.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if build {
+				fmt.Printf("Compilando %q...\n", args[0])
+				log, err := plugins.Build(args[0])
+				if log != "" {
+					fmt.Println(log)
+				}
+				if err != nil {
+					return err
+				}
+			}
 			installed, err := plugins.Restart(args[0])
 			if asJSON {
 				printJSON(installed)
@@ -432,6 +469,7 @@ func pluginRestartCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el estado resultante como JSON en vez de texto")
+	cmd.Flags().BoolVar(&build, "build", false, "Compilar de nuevo (backend + frontend) antes de reiniciar — propaga cambios de código")
 	return cmd
 }
 
