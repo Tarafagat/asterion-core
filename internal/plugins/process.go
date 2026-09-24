@@ -35,6 +35,21 @@ func freePort() (int, error) {
 // técnica que usa Start para uno ya instalado.
 func FreePort() (int, error) { return freePort() }
 
+// portAvailable confirma si un puerto TCP en loopback está libre en este
+// instante — mismo mecanismo (y la misma carrera inherente) que freePort:
+// nada impide que otro proceso lo tome entre este chequeo y que el plugin
+// recién arrancado intente bindearlo. Se usa para decidir si vale la pena
+// reintentar el último puerto conocido de un plugin en vez de pedir uno
+// nuevo — ver el comentario sobre reuso de puerto en Start.
+func portAvailable(port int) bool {
+	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return false
+	}
+	l.Close()
+	return true
+}
+
 // WaitHealthy es waitHealthy expuesto — lo usa `asterion plugin dev` para
 // esperar a que un plugin recién arrancado (no necesariamente instalado)
 // responda su health check, igual que Start hace con uno instalado.
@@ -130,9 +145,22 @@ func Start(name string) (Installed, error) {
 
 	port := installed.Manifest.Port
 	if port == 0 {
-		port, err = freePort()
-		if err != nil {
-			return Installed{}, fmt.Errorf("no pude reservar un puerto libre: %w", err)
+		// Sin puerto fijo en el manifest: reusar el último puerto asignado
+		// (el que quedó guardado en state.json de la corrida anterior —
+		// Stop() nunca lo borra) si todavía está libre, en vez de pedir
+		// uno nuevo siempre. Sin esto, cualquier stop+start (o un futuro
+		// restart) le cambia el puerto al plugin cada vez, rompiendo todo
+		// lo que dependa de que sea estable (proxy, firewall, health
+		// checks externos). Si el último puerto ya no está libre (otro
+		// proceso lo tomó mientras el plugin estaba parado), cae a pedir
+		// uno nuevo en vez de fallar.
+		if installed.Port != 0 && portAvailable(installed.Port) {
+			port = installed.Port
+		} else {
+			port, err = freePort()
+			if err != nil {
+				return Installed{}, fmt.Errorf("no pude reservar un puerto libre: %w", err)
+			}
 		}
 	}
 
@@ -223,6 +251,50 @@ func Stop(name string) error {
 	installed.Status = "stopped"
 	installed.PID = 0
 	return Save(installed)
+}
+
+// Restart para el proceso actual (si hay uno) y lo vuelve a arrancar. A
+// diferencia de que el caller encadene Stop() + Start() por su cuenta,
+// acá se espera a que el proceso viejo termine de verdad (waitExit) antes
+// de llamar a Start() — sin esa espera, Start() suele encontrar el puerto
+// viejo todavía ocupado (SIGTERM no mata al instante) y por eso termina
+// pidiendo uno nuevo, exactamente el problema que este comando existe
+// para evitar: que reiniciar un plugin le cambie el puerto.
+func Restart(name string) (Installed, error) {
+	before, err := Get(name)
+	if err != nil {
+		return Installed{}, err
+	}
+
+	if err := Stop(name); err != nil {
+		return Installed{}, err
+	}
+
+	if before.PID > 0 {
+		waitExit(before.PID, 10*time.Second)
+	}
+
+	return Start(name)
+}
+
+// waitExit sondea isAlive hasta que el proceso ya no esté vivo o se
+// cumpla el timeout. Best-effort a propósito: en Windows isAlive no puede
+// confirmar nada (ver su propio comentario) — sondear ahí sería fingir
+// una certeza que no existe, así que en cambio se espera un margen fijo
+// chico y se sigue, dejando que Start() decida con lo que encuentre.
+func waitExit(pid int, timeout time.Duration) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		alive, checked := isAlive(pid)
+		if !checked {
+			time.Sleep(500 * time.Millisecond)
+			return
+		}
+		if !alive {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // Status refresca (y devuelve) el estado real de un plugin instalado,

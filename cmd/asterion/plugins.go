@@ -59,6 +59,7 @@ func pluginsCmd() *cobra.Command {
 		pluginBuildCmd(),
 		pluginStartCmd(),
 		pluginStopCmd(),
+		pluginRestartCmd(),
 		pluginRemoveCmd(),
 		pluginSetMainCmd(),
 		pluginUnsetMainCmd(),
@@ -398,6 +399,34 @@ func pluginStopCmd() *cobra.Command {
 				return nil
 			}
 			fmt.Printf("✓ %q detenido\n", args[0])
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&asJSON, "json", false, "Imprimir el estado resultante como JSON en vez de texto")
+	return cmd
+}
+
+func pluginRestartCmd() *cobra.Command {
+	var asJSON bool
+	cmd := &cobra.Command{
+		Use:   "restart <name>",
+		Short: "Reinicia el proceso del plugin sin cambiarle el puerto",
+		Long: "Para el proceso actual y lo vuelve a arrancar — a diferencia de encadenar\n" +
+			"'plugin stop' + 'plugin start' a mano, espera a que el proceso viejo termine\n" +
+			"de verdad antes de arrancar el nuevo, así el plugin recupera el mismo puerto\n" +
+			"que tenía (siempre que nada más lo haya tomado mientras estaba parado) en vez\n" +
+			"de que cada reinicio le asigne uno nuevo al azar.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			installed, err := plugins.Restart(args[0])
+			if asJSON {
+				printJSON(installed)
+				return err
+			}
+			if err != nil {
+				return err
+			}
+			fmt.Printf("✓ %q reiniciado — puerto %d, pid %d\n", installed.Name, installed.Port, installed.PID)
 			return nil
 		},
 	}
