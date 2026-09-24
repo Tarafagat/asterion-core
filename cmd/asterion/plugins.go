@@ -60,6 +60,7 @@ func pluginsCmd() *cobra.Command {
 		pluginStartCmd(),
 		pluginStopCmd(),
 		pluginRestartCmd(),
+		pluginLogsCmd(),
 		pluginRemoveCmd(),
 		pluginSetMainCmd(),
 		pluginUnsetMainCmd(),

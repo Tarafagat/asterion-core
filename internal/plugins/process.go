@@ -69,6 +69,11 @@ func logPath(installed Installed) (string, error) {
 	return filepath.Join(dir, installed.Name+".log"), nil
 }
 
+// LogPath es logPath expuesto — lo usa `asterion plugin logs` para ubicar
+// el mismo archivo al que Start ya redirige stdout+stderr del proceso, sin
+// duplicar la lógica de dónde vive.
+func LogPath(installed Installed) (string, error) { return logPath(installed) }
+
 // isAlive confirma si un proceso sigue vivo mandándole la señal 0 (no lo
 // afecta, solo pregunta) — soportado en Unix. En Windows Go no expone un
 // chequeo equivalente sin dependencias nuevas: en vez de asumir un estado
