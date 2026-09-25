@@ -29,12 +29,18 @@ type Installed struct {
 	// para que Uninstall sepa que NUNCA debe borrar Dir — ver el comentario
 	// ahí. Un plugin instalado por 'install <repo-url>' normal siempre
 	// tiene Linked=false.
-	Linked               bool     `json:"linked,omitempty"`
-	Manifest             Manifest `json:"manifest"`
-	Port                 int      `json:"port,omitempty"`
-	PID                  int      `json:"pid,omitempty"`
-	Status               string   `json:"status"` // stopped | running
-	ConnectedProjectSlug string   `json:"connected_project_slug,omitempty"`
+	Linked   bool     `json:"linked,omitempty"`
+	Manifest Manifest `json:"manifest"`
+	// GitRef es el branch/tag/commit pedido al instalar (ver InstallRef en
+	// install.go) — vacío si se instaló con el HEAD del branch default
+	// (Install normal) o si es --link (Linked=true, no hay git de por
+	// medio). Puramente informativo: no se vuelve a resolver solo:
+	// reinstalar con otro ref es 'plugin remove' + reinstalar.
+	GitRef               string `json:"git_ref,omitempty"`
+	Port                 int    `json:"port,omitempty"`
+	PID                  int    `json:"pid,omitempty"`
+	Status               string `json:"status"` // stopped | running
+	ConnectedProjectSlug string `json:"connected_project_slug,omitempty"`
 	// IsMain marca el plugin que se publica con 'asterion local tunnel
 	// start' cuando no se especifica --port ni --plugin — nunca más de
 	// uno a la vez, ver SetMain.

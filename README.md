@@ -801,6 +801,155 @@ marketplace pública, ver su README) — la mitigación actual sigue siendo el
 manifiesto declarativo (nunca se corre nada que no esté ahí) más que el
 usuario elige explícitamente qué instalar.
 
+### Ciclo de desarrollo de un plugin: `restart`, `logs`, `build`
+
+```bash
+asterion plugin build mi-plugin            # compila el backend (go build / venv+pip) y, si tiene, el frontend (pnpm)
+asterion plugin start mi-plugin --build    # o: compilar justo antes de arrancar, en un solo paso
+asterion plugin restart mi-plugin          # reinicia el binario/dist YA COMPILADOS, recupera el mismo puerto
+asterion plugin restart mi-plugin --build  # editar código → build → restart, en un solo comando
+asterion plugin logs mi-plugin             # últimas 50 líneas de stdout+stderr del proceso
+asterion plugin logs mi-plugin --follow    # -f, como 'tail -f' — Ctrl+C para salir
+```
+
+`plugin build` es un paso explícito a propósito — Asterion nunca ejecuta
+código de un plugin de terceros por su cuenta, ni siquiera para
+compilarlo. Sabe preparar dos lenguajes hoy: `language.name="go"` (`go
+build`, asegurándose antes de que
+`~/.config/asterion/plugins/repos/asterion-plugin-contract` esté clonada
+— todo plugin en Go la referencia con `replace` en su propio `go.mod`) y
+`"python"` (crea/sincroniza el virtualenv con `pip install -r
+requirements.txt`; `Contract.language(..., venv=..., requirements=...)`
+en Asterion Language deja declarar explícitamente dónde viven ambos si
+el plugin no sigue la convención de `start.command`). Si además el
+plugin tiene un frontend propio (`frontend/package.json`), el mismo
+comando corre `pnpm install && pnpm build` ahí, sea cual sea el lenguaje
+del backend.
+
+`plugin restart` no es lo mismo que encadenar `stop` + `start` a mano:
+espera a que el proceso viejo termine de verdad antes de arrancar el
+nuevo, así el plugin recupera el mismo puerto que tenía (si nada más lo
+tomó mientras estaba parado). Sin `--build` (default) reinicia el
+binario/dist que ya estaban compilados — si editaste código desde el
+último `plugin build`, esos cambios no se propagan solos.
+
+`plugin logs` lee el mismo archivo al que `start`/`restart` ya redirige
+stdout+stderr — no hace falta que el plugin haga nada especial para que
+funcione, pero tampoco muestra más de lo que el plugin ya loguea por su
+cuenta.
+
+### `asterion plugin export` — empaquetar un plugin fuera de Asterion
+
+```bash
+asterion plugin export mi-plugin --out ./mi-plugin-export
+```
+
+Compila el plugin (mismo `Build()` que `plugin build`) y arma una
+carpeta autocontenida, corrible **sin el CLI de Asterion ni su máquina
+de estado**:
+
+- **`.env_asterion_produced`** — exactamente las mismas env vars que ya
+  arma `asterion plugin start` (`ASTERION_PLUGIN_NAME`/`PORT`/`DIR`/
+  `CONFIG_*`), con los valores REALES ya configurados vía `plugin config
+  set`. Contiene secretos de verdad — permisos `0600`, excluido en el
+  `.gitignore` que el propio export genera, **nunca se commitea**.
+- **`frontend/.env.production`** (solo si el plugin tiene frontend
+  propio) — únicamente los campos de `config_schema` marcados
+  explícitamente no-secretos. El build del frontend nunca ve
+  `.env_asterion_produced`: cualquier variable que un bundler exponga
+  termina siendo pública en el bundle que descarga el navegador.
+- **`Dockerfile`** de referencia (multi-stage, según `language.name` —
+  Go o Python, más un stage de Node si hay frontend) — un punto de
+  partida para `docker build` que **vos** corrés; Asterion nunca ejecuta
+  Docker por su cuenta. Confirmado en vivo: si el código del plugin
+  escucha en `127.0.0.1` (la convención de desarrollo local), `docker
+  run -p` no le va a llegar — tiene que escuchar en `0.0.0.0` para
+  responder a través de un puerto publicado de Docker.
+- **`README_ASTERION_EXPORT.md`** — cómo correrlo, con y sin Docker, sin
+  asumir que quien lo lee tiene el CLI de Asterion instalado.
+
+Un plugin Python no lleva su venv copiado (no son portables entre
+máquinas — referencian rutas absolutas del intérprete original); el
+README generado explica cómo recrearlo, o usar el `Dockerfile`, que
+instala las dependencias desde cero. `--include auto|backend|both`
+controla si se empaqueta el frontend (default: `auto`, según si el
+plugin tiene `frontend/package.json`); `--port` fija el
+`ASTERION_PLUGIN_PORT` del `.env` exportado (default `8080` — el puerto
+de desarrollo actual no existe fuera de esta máquina).
+
+### `asterion plugin system` — varios plugins interconectados desde un `.asterion`
+
+Un sistema de plugins es un archivo `.asterion` que usa el DSL
+`System.*` (ver
+[`asterion-language/spec/grammar.md`](https://github.com/Tarafagat/asterion-language/blob/main/spec/grammar.md)
+§ "DSL de sistema de plugins" y su
+[TUTORIAL.md](https://github.com/Tarafagat/asterion-language/blob/main/docs/TUTORIAL.md)
+§ 7) para declarar varios plugins ya instalables y cómo se conectan
+entre sí, en vez de instalar/configurar/arrancar/conectar cada uno a
+mano:
+
+```python
+# sistema.asterion
+db  = System.plugin(route="./mi-plugin-db", principal=true)
+api = System.plugin(route="./mi-plugin-api", requires=["node@20.11.0"])
+
+System.wire(to=api, key="DATABASE_URL", from=db)
+System.wire(to=api, key="DB_NAME", from=db, field="env:database_name")
+```
+
+```bash
+asterion plugin system apply sistema.asterion --build     # instala, compila, arranca y conecta todo
+asterion plugin system watch-install sistema.asterion     # servicio de fondo: reaplica solo si un puerto cambia
+asterion plugin system watch-uninstall sistema.asterion   # lo quita
+asterion plugin system export sistema.asterion --out ./salida   # cada plugin a su carpeta portable + un .env combinado
+```
+
+`system apply` instala cada plugin declarado (carpeta local con `route`
+relativo, o clona si es una URL de git — `--link` implícito para rutas
+locales), marca el que declaró `principal=true` (mismo campo `IsMain`
+que ya usa `asterion local tunnel start`), resuelve cada `System.wire`
+contra el estado REAL del plugin origen (su puerto real en runtime, o
+una config ya guardada con `field="env:<clave>"`) y arranca todo en el
+orden del archivo — el propio lenguaje no permite referencias hacia
+adelante, así que ese orden ya es el de instalación/arranque correcto.
+El `.asterion` nunca puede contener un secreto real: `System.wire` solo
+declara qué clave copiar de dónde, nunca un valor — los secretos de cada
+plugin se siguen configurando aparte con `plugin config set` de siempre.
+Correrlo de nuevo es seguro e idempotente (no reinstala lo que ya está,
+no reinicia lo que no cambió de wiring).
+
+`requires=[...]` en `System.plugin(...)` le pide a Asterion toolchains
+para ese plugin antes de compilarlo — tres niveles, honestos sobre lo
+que hace cada uno:
+
+| Forma | Qué pasa |
+|---|---|
+| `"node@<versión exacta>"` (ej. `"node@20.11.0"`) | Se descarga sandboxed desde nodejs.org, se verifica contra `SHASUMS256.txt`, se cachea en `~/.config/asterion/plugins/toolchains/` — nunca toca un Node ya instalado en el sistema. pnpm viene con Node vía Corepack, no se declara aparte. |
+| `"python"` / `"go"` (sin versión, a propósito) | Solo se VERIFICA que ya estén en el PATH — ninguno de los dos publica un tarball portable oficial tan limpio como el de Node como para descargarlo sandboxed. |
+| `"java"` / `"c"` / `"gcc"` / `"clang"` | Error explícito con el motivo (sin vendor de JDK obvio; un compilador de C depende de headers/libs del sistema) — nunca un intento silencioso que falle después de forma confusa. |
+
+`watch-install` instala un servicio de fondo — systemd `--user` en
+Linux, `LaunchAgent` en macOS, Scheduled Task en Windows, mismo
+mecanismo que ya usa `asterion cloud install-agent`, pero un servicio
+HERMANO e independiente, sin depender de una sesión de Cloud — que
+reaplica el archivo cada `--interval` (default 20s). Si el puerto de
+algún plugin cambia (ej. un restart que no pudo recuperar el último
+puerto), el próximo tick lo detecta y reconecta/reinicia lo que
+dependía de él, sin que nadie tenga que correr `apply` a mano. Es
+sondeo, no push instantáneo.
+
+`system export` es el mismo `plugin export` de arriba, corrido una vez
+por plugin del sistema, cada uno en su propia subcarpeta — más un
+`.env_asterion_produced` combinado a nivel sistema (variables de todos
+los plugins, prefijadas por su nombre de variable del `.asterion` en
+mayúsculas, ej. `DB__ASTERION_PLUGIN_PORT`) como referencia única para
+editar todo desde un solo lugar. Los `System.wire` con `field="port"` se
+resuelven contra puertos FIJOS asignados en el momento del export (8080,
+8081, ... en el orden del archivo), no contra el puerto efímero de
+desarrollo — bajo el supuesto de que los servicios se despliegan juntos
+en el mismo host; si el destino real es otro, hay que editar a mano los
+`.env_asterion_produced` de cada subcarpeta.
+
 ## Infrastructure Safety Lab
 
 La pregunta que motiva todo este sistema: *"si instalo ufw en una instancia
@@ -1249,6 +1398,15 @@ la salida — nunca en silencio.
 Verificado en vivo de punta a punta: `asterion language apply` contra una
 service account real creó una instancia `e2-micro` de verdad en GCP,
 confirmada con `ListInstances`, y borrada apenas se confirmó.
+
+El mismo lenguaje tiene otros dos usos, cada uno un DSL separado (mismo
+lexer/parser, su propio compilador chico — nunca pasan por el
+`semantic.Analyzer` de infraestructura de arriba): `Contract.*` describe
+el contrato de un plugin nuevo y compila a un `plugin.yaml`
+(`asterion plugin from-asterion`, ver "Plugins de terceros" más arriba),
+y `System.*` declara un sistema de varios plugins interconectados
+(`asterion plugin system apply/export/watch`, ver más arriba). Ver
+`asterion-language/spec/grammar.md` para la gramática de los tres.
 
 Ver el README de `asterion-language` para la especificación completa
 (gramática, códigos de diagnóstico `ASTRnnn`) y por qué la arquitectura

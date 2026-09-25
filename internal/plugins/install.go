@@ -16,11 +16,15 @@ import (
 
 var repoNamePattern = regexp.MustCompile(`([a-zA-Z0-9_-]+?)(\.git)?/?$`)
 
-// deriveName saca un nombre de plugin de la URL del repo
+// DeriveName saca un nombre de plugin de la URL del repo
 // (.../asterion-plugin-sii -> "sii"; .../mi-plugin -> "mi-plugin"). El
 // prefijo "asterion-plugin-" es una convención sugerida, no obligatoria —
-// si no está, se usa el nombre del repo tal cual.
-func deriveName(repoURL string) string {
+// si no está, se usa el nombre del repo tal cual. Exportada (no solo
+// deriveName interno) porque 'asterion plugin system apply' (ver
+// cmd/asterion/plugin_system.go) necesita adivinar el nombre esperado de
+// un plugin ANTES de clonarlo, para decidir si ya está instalado sin
+// tener que clonar de nuevo cada vez que se re-aplica el mismo sistema.
+func DeriveName(repoURL string) string {
 	match := repoNamePattern.FindStringSubmatch(repoURL)
 	base := repoURL
 	if len(match) > 1 {
@@ -48,12 +52,27 @@ func Install(repoURL, nameOverride string, link bool) (Installed, error) {
 	if link {
 		return InstallLinked(repoURL, nameOverride)
 	}
+	return installGit(repoURL, nameOverride, "")
+}
+
+// InstallRef es Install para un ref puntual (branch, tag, o commit SHA) —
+// 'asterion plugin system apply' lo usa cuando un System.plugin(...)
+// declara ref=... (ver cmd/asterion/plugin_system.go). Sin ref, Install e
+// InstallRef son exactamente lo mismo.
+func InstallRef(repoURL, nameOverride, ref string) (Installed, error) {
+	return installGit(repoURL, nameOverride, ref)
+}
+
+// installGit es el clon+registro real, compartido por Install e
+// InstallRef — la única diferencia entre ambos es si hay un ref al que
+// hacer checkout después de clonar.
+func installGit(repoURL, nameOverride, ref string) (Installed, error) {
 	if repoURL == "" {
 		return Installed{}, fmt.Errorf("falta la URL (o ruta) del repo del plugin")
 	}
 	name := nameOverride
 	if name == "" {
-		name = deriveName(repoURL)
+		name = DeriveName(repoURL)
 	}
 	if !apc.IsValidName(name) {
 		return Installed{}, fmt.Errorf("no pude derivar un nombre de plugin válido de %q — pasá uno explícito con --name", repoURL)
@@ -75,10 +94,31 @@ func Install(repoURL, nameOverride string, link bool) (Installed, error) {
 		return Installed{}, fmt.Errorf("necesito 'git' en el PATH para instalar plugins (clona el repo del plugin) — instalalo y reintentá")
 	}
 
-	cmd := exec.Command("git", "clone", "--depth", "1", repoURL, dir)
+	// Con ref: clone completo, sin --depth 1 — un shallow clone no puede
+	// hacer checkout de un commit arbitrario fuera de su historia
+	// truncada (sí puede de un branch/tag conocido, pero un SHA puntual
+	// necesita el historial completo, así que se usa el mismo camino
+	// para los dos en vez de dos rutas de código distintas). Sin ref
+	// (el caso común, HEAD del branch default): shallow, más rápido,
+	// comportamiento sin cambios respecto de antes de InstallRef existir.
+	var cmd *exec.Cmd
+	if ref != "" {
+		cmd = exec.Command("git", "clone", repoURL, dir)
+	} else {
+		cmd = exec.Command("git", "clone", "--depth", "1", repoURL, dir)
+	}
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(dir)
 		return Installed{}, fmt.Errorf("git clone falló: %s", strings.TrimSpace(string(out)))
+	}
+
+	if ref != "" {
+		checkout := exec.Command("git", "checkout", ref)
+		checkout.Dir = dir
+		if out, err := checkout.CombinedOutput(); err != nil {
+			_ = os.RemoveAll(dir)
+			return Installed{}, fmt.Errorf("git checkout %s falló: %s", ref, strings.TrimSpace(string(out)))
+		}
 	}
 
 	manifest, err := LoadManifest(dir)
@@ -104,6 +144,7 @@ func Install(repoURL, nameOverride string, link bool) (Installed, error) {
 		Manifest:    manifest,
 		Port:        manifest.Port,
 		Status:      "stopped",
+		GitRef:      ref,
 		InstalledAt: time.Now(),
 	}
 	if err := Save(installed); err != nil {

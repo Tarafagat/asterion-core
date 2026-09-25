@@ -61,6 +61,8 @@ func pluginsCmd() *cobra.Command {
 		pluginStopCmd(),
 		pluginRestartCmd(),
 		pluginLogsCmd(),
+		pluginSystemCmd(),
+		pluginExportCmd(),
 		pluginRemoveCmd(),
 		pluginSetMainCmd(),
 		pluginUnsetMainCmd(),
@@ -334,13 +336,16 @@ func pluginBuildCmd() *cobra.Command {
 		Short: "Compila el binario (y el frontend, si tiene) de un plugin ya instalado",
 		Long: "Paso explícito a propósito: Asterion nunca ejecuta código de un plugin de terceros por su\n" +
 			"cuenta, ni siquiera para compilarlo — este comando es ese pedido puntual del operador, no algo\n" +
-			"que 'install'/'start' disparen solos. Hoy solo sabe compilar plugins con language.name=\"go\"\n" +
-			"en su plugin.yaml (los dos oficiales, asterion-mail-plugin-basic y asterion-firewall-analysis,\n" +
-			"lo son) — si tiene frontend/package.json, también corre 'pnpm install && pnpm build' ahí.\n\n" +
-			"Antes de compilar, se asegura de que ~/.config/asterion/plugins/repos/asterion-plugin-contract\n" +
-			"esté clonada (o la repara si un clone anterior quedó a medias) — todo plugin en Go la\n" +
-			"referencia con 'replace ../asterion-plugin-contract' en su propio go.mod, así que sin\n" +
-			"ella el build falla ahí mismo.",
+			"que 'install'/'start' disparen solos. Hoy sabe preparar plugins con language.name=\"go\" ('go\n" +
+			"build') o \"python\" (crea/sincroniza el venv con 'pip install -r requirements.txt' — ver\n" +
+			"Contract.language(..., venv=..., requirements=...) en Asterion Language para declarar\n" +
+			"explícitamente dónde viven, si no siguen la convención de start.command) en su plugin.yaml —\n" +
+			"si además tiene frontend/package.json, también corre 'pnpm install && pnpm build' ahí, sea\n" +
+			"cual sea el lenguaje del backend.\n\n" +
+			"Antes de compilar un plugin en Go, se asegura de que\n" +
+			"~/.config/asterion/plugins/repos/asterion-plugin-contract esté clonada (o la repara si un\n" +
+			"clone anterior quedó a medias) — todo plugin en Go la referencia con 'replace\n" +
+			"../asterion-plugin-contract' en su propio go.mod, así que sin ella el build falla ahí mismo.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			fmt.Printf("Compilando %q...\n", args[0])
