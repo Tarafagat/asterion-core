@@ -61,6 +61,7 @@ func main() {
 		pluginsCmd(),
 		marketplaceCmd(),
 		languageCmd(),
+		graphCmd(),
 		installCmd(),
 		upgradeCmd(),
 	)

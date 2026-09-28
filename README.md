@@ -1399,18 +1399,82 @@ Verificado en vivo de punta a punta: `asterion language apply` contra una
 service account real creó una instancia `e2-micro` de verdad en GCP,
 confirmada con `ListInstances`, y borrada apenas se confirmó.
 
-El mismo lenguaje tiene otros dos usos, cada uno un DSL separado (mismo
+El mismo lenguaje tiene otros tres usos, cada uno un DSL separado (mismo
 lexer/parser, su propio compilador chico — nunca pasan por el
 `semantic.Analyzer` de infraestructura de arriba): `Contract.*` describe
 el contrato de un plugin nuevo y compila a un `plugin.yaml`
 (`asterion plugin from-asterion`, ver "Plugins de terceros" más arriba),
-y `System.*` declara un sistema de varios plugins interconectados
-(`asterion plugin system apply/export/watch`, ver más arriba). Ver
-`asterion-language/spec/grammar.md` para la gramática de los tres.
+`System.*` declara un sistema de varios plugins interconectados
+(`asterion plugin system apply/export/watch`, ver más arriba), y
+`AGCA.*` declara una inteligencia cognitiva de Asterion Graph Cognitive
+Architecture (`asterion graph validate/inspect/run/bot run`, ver más
+abajo). Ver `asterion-language/spec/grammar.md` para la gramática de
+los cuatro.
 
 Ver el README de `asterion-language` para la especificación completa
 (gramática, códigos de diagnóstico `ASTRnnn`) y por qué la arquitectura
 quedó así.
+
+## Asterion Graph Cognitive Architecture (AGCA): `asterion graph`
+
+Repo hermano
+[`asterion-graph-cognitive-architecture`](https://github.com/Tarafagat/asterion-graph-cognitive-architecture)
+(mismo criterio de `replace` en `go.mod` que `asterion-lab`/
+`asterion-language`/`asterion-plugin-contract`) — implementa la propuesta
+de investigación "Camino a la AGI": un Cognitive Graph, neuronas
+intercambiables, agentes/swarms, memoria/experiencia y el sistema de
+Plugins cooperando como una sola inteligencia, declarada desde un
+`.asterion` con el DSL `AGCA.*` (ver "Asterion Language" más abajo y
+`asterion-language/spec/grammar.md` § "DSL de inteligencia cognitiva").
+
+```bash
+asterion graph validate ./company.asterion   # parsea + compila, nunca construye ni corre nada
+asterion graph inspect ./company.asterion    # construye la Intelligence completa y muestra su estado (grafo, neuronas, swarms, agentes, capabilities, bots)
+asterion graph run ./company.asterion --goal "necesito consultar el inventario" --capability classification
+asterion graph bot run ./company.asterion --bot admin_bot   # sesión de terminal: una línea, un goal
+```
+
+**Estado real, sin adornos** (un subconjunto de los 16 milestones del
+roadmap del paper, no los 16 completos — a propósito, siguiendo su
+propia instrucción de no construir todas las capas a la vez):
+
+- **Cognitive Graph real** — nodos/edges tipados, confianza,
+  procedencia, versión por escritura, snapshots. En memoria (no persiste
+  a disco todavía).
+- **Neuron Registry real, con UNA neurona invocable de punta a punta**:
+  `runtime.DeterministicClassifier`, una clasificación real por
+  keywords (no un LLM) que el runtime siempre trae. Neuronas GGUF/
+  remotas declaradas en el `.asterion` se registran y se listan (`asterion
+  graph inspect` las muestra) pero quedan `Healthy: false` — sin backend
+  real todavía, invocarlas da un error explícito en vez de una
+  respuesta inventada.
+- **Agent Scheduler real** — concurrencia acotada de verdad (goroutines
+  + semáforo, confirmado con `go test -race`), nunca un proceso
+  permanente por instancia declarada.
+- **`Import(...)` une un archivo AGCA con un sistema de plugins ya
+  declarado** (`System.plugin(...)`, ver "Plugins de terceros" más
+  arriba): trae sus nombres de plugin para poder referenciarlos. Con
+  route LOCAL (una carpeta ya presente en disco), su `plugin.yaml` real
+  se lee y sus capabilities (`resources[].crud`+`actions[]`) y campos
+  `secret: true` se DESCUBREN solos — `asterion graph inspect` los
+  muestra, sin que el archivo AGCA tenga que declarar un
+  `AGCA.secret(from=, field=)` manual solo para repetirlos. Ese campo
+  sigue existiendo para el caso de un plugin de route git todavía sin
+  clonar.
+- **Capability Registry real como registro/matching en memoria**, con
+  el descubrimiento de arriba como único poblador automático hoy —
+  **todavía no conectado a plugins ya instalados/corriendo en esta
+  misma máquina que no pasaron por un `Import(...)`** (ver "Plugins de
+  terceros" más arriba): es un paso futuro explícito, no simulado.
+- **Sin Executive Agent ni Policy Engine todavía**: `--capability` en
+  `graph run` es siempre explícita (nadie infiere qué neurona hace
+  falta desde el goal en lenguaje natural), y `AGCA.policy(...)` se
+  compila y se expone como datos, pero nada la evalúa en runtime.
+
+Ver el README de `asterion-graph-cognitive-architecture` § "Roadmap
+completo" para el estado real, milestone por milestone, de los 16
+pasos que el paper define en su propio orden de implementación
+recomendado — no una lista aparte, la misma fuente de verdad.
 
 ## Estado actual (honesto)
 
