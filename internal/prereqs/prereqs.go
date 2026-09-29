@@ -1,6 +1,7 @@
 // Package prereqs clona, al lado de asterion-core, los repos hermanos que
 // hacen falta para compilar/correr todo el ecosistema — asterion-lab,
-// asterion-language, asterion-plugin-contract (los tres con 'replace ../X'
+// asterion-language, asterion-plugin-contract y
+// asterion-graph-cognitive-architecture (los cuatro con 'replace ../X'
 // en go.mod) y asterion-shared (dependencia editable de Python para
 // backend-core). A diferencia de internal/upgrade (que deliberadamente NO
 // tiene una lista fija de repos — ver su propio comentario en ListRepos —
@@ -29,6 +30,7 @@ var catalog = []struct {
 	{"asterion-language", "https://github.com/Tarafagat/asterion-language.git"},
 	{"asterion-plugin-contract", "https://github.com/Tarafagat/asterion-plugin-contract.git"},
 	{"asterion-shared", "https://github.com/Tarafagat/asterion-shared.git"},
+	{"asterion-graph-cognitive-architecture", "https://github.com/Tarafagat/asterion-graph-cognitive-architecture.git"},
 }
 
 // Result es el resultado de procesar UN repo del catálogo — mismo criterio

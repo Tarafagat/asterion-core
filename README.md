@@ -1432,6 +1432,39 @@ asterion graph validate ./company.asterion   # parsea + compila, nunca construye
 asterion graph inspect ./company.asterion    # construye la Intelligence completa y muestra su estado (grafo, neuronas, swarms, agentes, capabilities, bots)
 asterion graph run ./company.asterion --goal "necesito consultar el inventario" --capability classification
 asterion graph bot run ./company.asterion --bot admin_bot   # sesión de terminal: una línea, un goal
+
+# Capa de Experience (Segundo Principio de AGI de AGCA):
+asterion graph act ./company.asterion --goal "buscar la serie histórica" --intent search_series --agent analyst
+asterion graph decisions ./company.asterion            # decisiones ya tomadas (persisten entre corridas)
+asterion graph explain ./company.asterion <decision-id>  # candidatos, scores, descartes con motivo, política, certeza
+asterion graph experience ./company.asterion [id]      # qué se esperaba, qué pasó, cómo cambió la certeza
+```
+
+**El Segundo Principio de AGI de AGCA** — *"AGCA aprende cuando los
+resultados de sus interacciones con un World modifican la certeza con la
+que seleccionará capacidades frente a estados futuros semejantes del
+World"* — está implementado de verdad y verificado en vivo: tres actos
+exitosos sobre el mismo contexto llevan la certeza de 0.500 a 0.774, y
+el score de la decisión sube con ella. La certeza vive por
+`(capability, contexto)`: una experiencia en un World nunca contamina la
+certeza de otro.
+
+**Nada de esto puede ejecutar código arbitrario.** Todo lo que una
+Intelligence puede hacer sobre un World está declarado como capability de
+Tool (`Tool.define(...)`/`Tool.capability(...)` en Asterion Language),
+con contrato explícito (`effects`, `requires`, `guarantees`). AGCA
+selecciona un `CapabilityID`; el runtime lo resuelve contra un handler
+registrado de antemano. No existe ninguna ruta hacia `eval`, shell, SQL
+crudo o un endpoint arbitrario: una Tool de base de datos puede usar SQL
+por dentro, pero AGCA solo conoce `inventory.get_stock`. Además,
+`AGCA.agent(allow=[...], deny=[...])` acota qué puede usar cada agente
+(deny-by-default: "Tool instalada ≠ Tool accesible"), y el pipeline
+verifica políticas y permisos ANTES de resolver el handler:
+
+```text
+Decision -> Policy Check -> Agent Permission Check -> Tool Contract
+  -> Requirements -> Handler -> Result -> Evaluation -> Experience
+  -> Confidence Update
 ```
 
 **Estado real, sin adornos** (un subconjunto de los 16 milestones del
@@ -1466,10 +1499,17 @@ propia instrucción de no construir todas las capas a la vez):
   **todavía no conectado a plugins ya instalados/corriendo en esta
   misma máquina que no pasaron por un `Import(...)`** (ver "Plugins de
   terceros" más arriba): es un paso futuro explícito, no simulado.
-- **Sin Executive Agent ni Policy Engine todavía**: `--capability` en
-  `graph run` es siempre explícita (nadie infiere qué neurona hace
-  falta desde el goal en lenguaje natural), y `AGCA.policy(...)` se
-  compila y se expone como datos, pero nada la evalúa en runtime.
+- **Policy Engine real para lo que un contrato declara**:
+  `AGCA.policy(deny="destructive")` veta una capability por sus effects
+  antes de ejecutarla, y queda registrado en la Decision. Lo que sigue
+  sin evaluarse es una condición arbitraria
+  (`when="data.sensitivity>=confidential"` compila pero no se evalúa).
+- **Sin Executive Agent todavía**: `--capability` en `graph run` y
+  `--intent` en `graph act` son explícitos — nadie infiere todavía qué
+  hace falta desde el goal en lenguaje natural.
+- **Memoria persistente real**: decisiones, experiencias y certeza
+  aprendida viven en `~/.config/asterion/agca/<intelligence>/` y
+  sobreviven entre corridas del CLI.
 
 Ver el README de `asterion-graph-cognitive-architecture` § "Roadmap
 completo" para el estado real, milestone por milestone, de los 16

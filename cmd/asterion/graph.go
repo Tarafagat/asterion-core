@@ -43,6 +43,7 @@ func graphCmd() *cobra.Command {
 		Short: "Asterion Graph Cognitive Architecture (AGCA): declara y corre una inteligencia cognitiva desde un .asterion",
 	}
 	root.AddCommand(graphValidateCmd(), graphInspectCmd(), graphRunCmd(), graphBotCmd())
+	root.AddCommand(graphCognitiveCmds()...)
 	return root
 }
 
@@ -60,9 +61,10 @@ func graphValidateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Printf("✓ %s — %d intelligence(s), %d graph(s), %d neuron(s), %d swarm(s), %d agent(s), %d capability requirement(s), %d memory(s), %d policy(s), %d bot(s), %d secret(s)\n",
+			fmt.Printf("✓ %s — %d intelligence(s), %d graph(s), %d neuron(s), %d swarm(s), %d agent(s), %d capability requirement(s), %d memory(s), %d policy(s), %d bot(s), %d secret(s), %d tool(s), %d capability contract(s)\n",
 				args[0], len(spec.Intelligences), len(spec.Graphs), len(spec.Neurons), len(spec.Swarms), len(spec.Agents),
-				len(spec.Capabilities), len(spec.Memories), len(spec.Policies), len(spec.Bots), len(spec.Secrets))
+				len(spec.Capabilities), len(spec.Memories), len(spec.Policies), len(spec.Bots), len(spec.Secrets),
+				len(spec.Tools), len(spec.ToolCaps))
 			return nil
 		},
 	}
@@ -110,6 +112,8 @@ type inspectReport struct {
 	Bots              []string       `json:"bots"`
 	Imports           []string       `json:"imports"`
 	Secrets           []string       `json:"secrets"`
+	ToolCapabilities  []string       `json:"tool_capabilities"`
+	AgentPermissions  []string       `json:"agent_permissions"`
 	DiscoveredCaps    []string       `json:"discovered_capabilities"`
 	DiscoveredSecrets []string       `json:"discovered_secrets"`
 	GraphNodeCount    int            `json:"graph_node_count"`
@@ -146,6 +150,18 @@ func buildInspectReport(rt *agcaruntime.Runtime) inspectReport {
 		} else {
 			report.Secrets = append(report.Secrets, fmt.Sprintf("%s (source=%s)", s.Name, s.Source))
 		}
+	}
+	for _, c := range rt.Tools.All() {
+		state := "declarada (sin handler — no ejecutable)"
+		if rt.Tools.Implemented(c.ID) {
+			state = "ejecutable"
+		}
+		report.ToolCapabilities = append(report.ToolCapabilities,
+			fmt.Sprintf("%s [%s] effects=%v requires=%v — %s", c.ID, c.Tool, c.Effects, c.Requires, state))
+	}
+	for _, a := range rt.Agents {
+		report.AgentPermissions = append(report.AgentPermissions,
+			fmt.Sprintf("%s allow=%v deny=%v", a.Name, a.Allow, a.Deny))
 	}
 	for _, dc := range rt.DiscoveredCapabilities {
 		if dc.Resolved {
@@ -214,6 +230,18 @@ func printInspect(rt *agcaruntime.Runtime, asJSON bool) error {
 		fmt.Println("Secrets:")
 		for _, s := range report.Secrets {
 			fmt.Printf("  - %s\n", s)
+		}
+	}
+	if len(report.ToolCapabilities) > 0 {
+		fmt.Println("Capabilities de Tool (lo único que AGCA puede ejecutar):")
+		for _, c := range report.ToolCapabilities {
+			fmt.Printf("  - %s\n", c)
+		}
+	}
+	if len(report.AgentPermissions) > 0 {
+		fmt.Println("Permisos por agente (deny-by-default):")
+		for _, a := range report.AgentPermissions {
+			fmt.Printf("  - %s\n", a)
 		}
 	}
 	if len(report.DiscoveredCaps) > 0 {

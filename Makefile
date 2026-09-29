@@ -32,7 +32,7 @@ VERSION := $(shell git log -1 --format=%s 2>/dev/null | grep -oE '^V\.?[0-9]+(\.
 # internal/prereqs/prereqs.go) no sirve para este primer build porque
 # todavía no hay ningún binario de asterion para correrlo. Mismo catálogo
 # en los dos lugares — si se agrega/saca un repo, tocar ambos.
-PREREQ_REPOS := asterion-lab asterion-language asterion-plugin-contract asterion-shared
+PREREQ_REPOS := asterion-lab asterion-language asterion-plugin-contract asterion-shared asterion-graph-cognitive-architecture
 
 .PHONY: prerequirements
 prerequirements:
