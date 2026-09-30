@@ -298,7 +298,7 @@ func writeFrontendSafeEnv(path string, installed plugins.Installed, config map[s
 
 	var keys []string
 	for _, f := range installed.Manifest.ConfigSchema {
-		if !f.Secret {
+		if !f.IsSecret() {
 			keys = append(keys, f.Key)
 		}
 	}

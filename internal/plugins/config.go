@@ -103,7 +103,7 @@ func GetConfigMasked(installed Installed) (map[string]string, error) {
 	}
 	secret := map[string]bool{}
 	for _, f := range installed.Manifest.ConfigSchema {
-		secret[f.Key] = f.Secret
+		secret[f.Key] = f.IsSecret()
 	}
 
 	out := make(map[string]string, len(stored))

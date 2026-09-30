@@ -137,7 +137,7 @@ func printConfigMenu(schema []apc.ConfigField, current, pending map[string]strin
 //	✗ obligatorio y falta     · opcional y vacío
 func fieldState(f apc.ConfigField, current, pending map[string]string) (marker, value string) {
 	if v, edited := pending[f.Key]; edited {
-		if f.Secret {
+		if f.IsSecret() {
 			return "*", "(secreto, sin guardar)"
 		}
 		return "*", v + "  (sin guardar)"
@@ -188,7 +188,7 @@ func askField(f apc.ConfigField, current, pending map[string]string) bool {
 	fmt.Printf("\n%s\n", label)
 
 	switch {
-	case f.Secret:
+	case f.IsSecret():
 		fmt.Println("  (secreto: no se va a ver mientras lo escribís, y se guarda cifrado)")
 	case f.Default != "":
 		fmt.Printf("  (default si lo dejás vacío: %s)\n", f.Default)
@@ -199,7 +199,7 @@ func askField(f apc.ConfigField, current, pending map[string]string) bool {
 	fmt.Printf("  %s = ", f.Key)
 
 	var value string
-	if f.Secret {
+	if f.IsSecret() {
 		value = readSecretLine()
 	} else {
 		value = strings.TrimSpace(trimNewline(readLine()))
@@ -213,7 +213,7 @@ func askField(f apc.ConfigField, current, pending map[string]string) bool {
 		return true
 	}
 	pending[f.Key] = value
-	if f.Secret {
+	if f.IsSecret() {
 		fmt.Println("  ✓ anotado (secreto)")
 	} else {
 		fmt.Printf("  ✓ anotado: %s\n", value)
@@ -234,7 +234,7 @@ func printManualHelp(pluginName string, schema []apc.ConfigField, configured map
 	secret := map[string]bool{}
 	required := map[string]bool{}
 	for _, f := range schema {
-		secret[f.Key] = f.Secret
+		secret[f.Key] = f.IsSecret()
 		required[f.Key] = f.Required
 	}
 
@@ -318,15 +318,30 @@ func shellQuote(v string) string {
 	return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'"
 }
 
-// stdinIsTerminal responde si stdin es una terminal de verdad. Sin
-// dependencias nuevas: en un pipe o una redirección, os.Stdin.Stat()
-// reporta ModeCharDevice apagado.
+// stdinIsTerminal responde si stdin es una terminal de verdad, con la que
+// se puede tener una conversación.
+//
+// El Stat() alcanza para descartar un pipe o una redirección desde un
+// archivo, pero NO alcanza solo: /dev/null también es un char device, así
+// que 'comando < /dev/null' pasaría el chequeo y el menú se pondría a pedir
+// valores a un stdin que solo devuelve EOF — mostrando prompts que nadie
+// va a poder contestar. Por eso además se le pregunta a stty, que es la
+// única que distingue una terminal de cualquier otro char device (y ya es
+// el mecanismo que usamos para el eco, así que no agrega dependencias).
 func stdinIsTerminal() bool {
 	info, err := os.Stdin.Stat()
-	if err != nil {
+	if err != nil || info.Mode()&os.ModeCharDevice == 0 {
 		return false
 	}
-	return info.Mode()&os.ModeCharDevice != 0
+	if runtime.GOOS == "windows" {
+		// Sin stty: el Stat() es lo único que hay. Es menos preciso, y se
+		// asume que sí — el fallback del menú avisa igual.
+		return true
+	}
+	if _, err := exec.LookPath("stty"); err != nil {
+		return true
+	}
+	return sttyRun("-g") == nil
 }
 
 // readSecretLine lee una línea sin que se vea mientras se tipea, usando
@@ -369,5 +384,8 @@ func disableEcho() (restore func(), ok bool) {
 func sttyRun(arg string) error {
 	cmd := exec.Command("stty", arg)
 	cmd.Stdin = os.Stdin // stty actúa sobre ESTA terminal, no sobre la suya
+	// Sin capturar la salida, un 'stty -g' imprimiría toda la config de la
+	// terminal en medio del menú.
+	cmd.Stdout, cmd.Stderr = nil, nil
 	return cmd.Run()
 }

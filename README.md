@@ -627,6 +627,8 @@ asterion plugin install github.com/usuario/asterion-plugin-sii   # clona el repo
 asterion plugin install ./mi-plugin-privado --link               # NO clona/copia nada — registra la carpeta tal cual
 asterion plugin config set sii                                  # menú interactivo: elegís por número, secretos sin eco
 asterion plugin config set sii rut_empresa=76.123.456-7 cert_password=...   # directo, para scripts/CI
+asterion plugin services sii  # sus servicios externos (base, Redis): qué hay, qué falta — no toca nada
+asterion plugin services up sii  # crea la base/usuario que falten en un motor ya existente y vuelca la conexión
 asterion plugin start sii     # puerto libre elegido solo, espera el health check
 asterion plugin list          # todos los instalados, con estado real (reconciliado contra el pid)
 asterion plugin stop sii
@@ -677,6 +679,80 @@ CI. Sin terminal interactiva (pipe, CI, cron) el menú no se abre — se
 explica la forma manual y se sale, en vez de colgarse esperando una
 línea que nunca llega.
 
+### `asterion plugin services` — la infraestructura externa que un plugin necesita
+
+Un plugin real no se configura solo con texto: necesita una base de datos
+con su usuario y su clave, un Redis, cosas que alguien tiene que crear
+antes. Los campos de `config_schema` son el resultado de ese trabajo, no
+el trabajo. `plugin services` hace el trabajo y deja el resultado en la
+config cifrada del plugin.
+
+Lo que el plugin declara en su `plugin.yaml` (o con
+`Contract.service(...)` en Asterion Language) es la necesidad: un
+servicio, de qué tipo, qué base y qué usuario quiere, y a qué claves de
+su propio `config_schema` volcar los datos de conexión (`maps_host`,
+`maps_port`, `maps_user`, `maps_password`, `maps_database`, `maps_url`).
+
+```bash
+asterion plugin services fuelity_bot                    # DETECTA y reporta. No toca nada.
+asterion plugin services up fuelity_bot                 # configura dentro de lo que YA existe
+asterion plugin services up fuelity_bot --create        # además, levanta en contenedor lo que falte
+asterion plugin services connect fuelity_bot db         # modo manual: apuntarlo a uno que ya exista
+```
+
+**El orden no cambia nunca**, y es lo central del diseño:
+
+1. **Detectar.** ¿Hay ya un motor de ese tipo respondiendo? Si la config
+   del plugin apunta a uno que funciona, no se toca nada.
+2. **Configurar adentro de lo que existe.** Crea la base y el usuario que
+   falten, con una contraseña generada con `crypto/rand`, y escribe
+   host/puerto/usuario/contraseña en la config cifrada.
+3. **Levantar un contenedor.** Solo con `--create`, nunca solo. Arrancar
+   un servicio que nadie pidió —con un puerto y un volumen nuevos en la
+   máquina de alguien— es justo la clase de sorpresa que este proyecto
+   evita. Sin ese flag, un servicio sin motor se reporta con las dos
+   salidas posibles y se sigue con los demás.
+
+**Antes de guardar, se entra con la credencial.** Es el chequeo que hace
+que lo guardado sirva de verdad: si el login falla, no se guarda nada. De
+ahí sale la única negativa que sorprende al principio y tiene motivo: si
+el usuario **ya existe** en el motor y no hay contraseña guardada para él,
+el comando corta. No hay forma de averiguar la contraseña de un usuario
+existente (ningún motor la devuelve), inventar una dejaría en la config
+algo que no funciona, y rotarla en silencio dejaría afuera a cualquier
+otra cosa que estuviera usando ese mismo usuario. Se resuelve eligiendo:
+`--rotate-password` para asignarle una nueva, o `services connect` para
+cargar la que ya tiene.
+
+**`connect` es el modo manual.** Para una base administrada, un Redis
+remoto, cualquier cosa que Asterion no puede (ni debe) crear: pide host,
+puerto, usuario, contraseña y base —solo los que el manifiesto declaró
+mapear—, valida la forma de cada uno (un puerto que no es un número, o
+una URL pegada en el campo de host, se rechazan en el momento en vez de
+guardarse para fallar mucho después), guarda y prueba la conexión. No
+crea ni modifica nada del otro lado. No confundir con `asterion plugin
+connect`, que vincula el plugin a un proyecto de Asterion Cloud.
+
+Detalles que importan:
+
+- **Se habla con cada motor por su CLI** (`psql`/`mysql`/`redis-cli`),
+  mismo criterio que `asterion database backup` con `pg_dump`/`mysqldump`:
+  cero dependencias Go nuevas. Si el cliente no está, se dice — no se
+  finge un chequeo que no se hizo. Con una excepción útil: si el motor es
+  un contenedor que Asterion levantó, se usa el cliente que ya viene
+  adentro, así que `--create` funciona en una máquina sin `psql`
+  instalado (lo normal en macOS).
+- **Las credenciales de administrador viajan por entorno**
+  (`PGPASSWORD`/`MYSQL_PWD`/`REDISCLI_AUTH`), nunca como argumento: un
+  password en la línea de comandos queda en el historial y es visible en
+  `ps aux` para cualquier usuario de la máquina. Se usan en el momento y
+  no se guardan.
+- **Idempotente.** Correrlo dos veces no cambia nada. Un contenedor que
+  ya existía se arranca, no se recrea (recrearlo borraría los datos del
+  plugin), y los tags de imagen son fijos, nunca `latest`.
+- Los contenedores se llaman `asterion-<plugin>-<servicio>` y publican
+  solo en `127.0.0.1`, con un volumen propio.
+
 **Plugins privados sin repo, con `--link`**: `asterion plugin install <carpeta>
 --link` registra esa carpeta tal cual está — nunca la clona ni la copia a
 ningún lado, `Dir` en el registro apunta directo ahí. Pensado para
@@ -718,6 +794,17 @@ config_schema:
 permissions:
   network: ["sii.cl"]
   secrets: true
+services:                       # infraestructura externa — ver 'plugin services'
+  - name: db
+    kind: postgres              # postgres | mysql | mariadb | redis
+    version: "16"
+    database: sii
+    user: sii_app
+    maps_host: db_host          # a qué claves del config_schema de arriba
+    maps_port: db_port          # volcar la conexión, una vez resuelta
+    maps_user: db_user
+    maps_password: db_password
+    maps_database: db_name
 resources:
   - name: invoices
     endpoint: /invoices

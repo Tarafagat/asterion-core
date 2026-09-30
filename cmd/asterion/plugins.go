@@ -69,6 +69,7 @@ func pluginsCmd() *cobra.Command {
 		pluginSetServiceCmd(),
 		pluginUnsetServiceCmd(),
 		pluginConfigCmd(),
+		pluginServicesCmd(),
 		pluginConnectCmd(),
 		pluginDisconnectCmd(),
 		pluginInitCmd(),
@@ -211,6 +212,19 @@ func pluginInstallCmd() *cobra.Command {
 					fmt.Printf("  - %s: %s%s\n", f.Key, f.Label, req)
 				}
 				fmt.Printf("\nConfigurala con: asterion plugin config set %s clave=valor\n", installed.Name)
+				fmt.Printf("  (o sin argumentos, para un menú: asterion plugin config set %s)\n", installed.Name)
+			}
+			// Si el plugin declara servicios, la mayoría de esas claves no
+			// hay que tipearlas: las completa 'plugin services up' después
+			// de crear la base y el usuario. Decirlo acá evita que alguien
+			// se ponga a buscar a mano una contraseña que Asterion genera.
+			if svcs := installed.Manifest.Services; len(svcs) > 0 {
+				names := make([]string, 0, len(svcs))
+				for _, s := range svcs {
+					names = append(names, fmt.Sprintf("%s (%s)", s.Name, s.Kind))
+				}
+				fmt.Printf("\nTambién necesita infraestructura externa: %s\n", strings.Join(names, ", "))
+				fmt.Printf("Mirá qué hay y qué falta con: asterion plugin services %s\n", installed.Name)
 			}
 			fmt.Printf("\nArrancalo con: asterion plugin start %s\n", installed.Name)
 			return nil
