@@ -619,11 +619,25 @@ func pluginConfigCmd() *cobra.Command {
 func pluginConfigSetCmd() *cobra.Command {
 	var asJSON bool
 	cmd := &cobra.Command{
-		Use:   "set <name> clave=valor [clave2=valor2 ...]",
-		Short: "Guarda uno o más valores de configuración, cifrados",
-		Args:  cobra.MinimumNArgs(2),
+		Use:   "set <name> [clave=valor ...]",
+		Short: "Guarda uno o más valores de configuración, cifrados — sin pares clave=valor abre un menú interactivo",
+		Long: "Con pares clave=valor guarda directo (lo que sirve para scripts y CI).\n\n" +
+			"SIN pares abre un menú interactivo con los campos que el plugin declara en su\n" +
+			"config_schema, numerados y con su estado (✓ ya configurado, ✗ obligatorio que\n" +
+			"falta, · opcional): se elige uno por número, o 'f' para completar de corrido\n" +
+			"solo los obligatorios que faltan. Los campos marcados 'secret' se piden sin\n" +
+			"eco en la terminal. Al guardar, imprime el comando no interactivo equivalente\n" +
+			"— con los secretos como <clave>, nunca su valor — para poder repetir la misma\n" +
+			"config en otra máquina o dejarla documentada.",
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if len(args) == 1 {
+				if asJSON {
+					return fmt.Errorf("--json no aplica al menú interactivo — pasá los pares clave=valor")
+				}
+				return runConfigWizard(name)
+			}
 			values := make(map[string]string, len(args)-1)
 			for _, kv := range args[1:] {
 				parts := strings.SplitN(kv, "=", 2)

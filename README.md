@@ -625,7 +625,8 @@ contrato en todo el ecosistema.
 # ciclo de vida
 asterion plugin install github.com/usuario/asterion-plugin-sii   # clona el repo, valida plugin.yaml
 asterion plugin install ./mi-plugin-privado --link               # NO clona/copia nada — registra la carpeta tal cual
-asterion plugin config set sii rut_empresa=76.123.456-7 cert_password=...
+asterion plugin config set sii                                  # menú interactivo: elegís por número, secretos sin eco
+asterion plugin config set sii rut_empresa=76.123.456-7 cert_password=...   # directo, para scripts/CI
 asterion plugin start sii     # puerto libre elegido solo, espera el health check
 asterion plugin list          # todos los instalados, con estado real (reconciliado contra el pid)
 asterion plugin stop sii
@@ -655,6 +656,26 @@ pasa por su analyzer de infraestructura). Ver
 `asterion-language/spec/grammar.md` § "DSL de manifiesto de plugin" por la
 gramática completa, y `asterion-language/examples/plugin-manifest.asterion`
 por un ejemplo real y completo.
+
+**Configurar un plugin con muchos campos, sin tipear cada clave.** Un
+plugin real puede declarar 20+ campos de `config_schema` (JWT, dos bases
+de datos, Redis, SMTP, CORS...). `asterion plugin config set <plugin>`
+**sin** pares `clave=valor` abre un menú interactivo: lista los campos
+numerados con su estado (`✓` ya configurado, `✗` obligatorio que falta,
+`·` opcional), se elige uno por número, o `f` para completar de corrido
+solo los obligatorios que faltan. Los campos marcados `secret` en el
+`plugin.yaml` se piden **sin eco en la terminal** (vía `stty`; en
+Windows, o si no está disponible, avisa que el valor se va a ver en vez
+de fingir privacidad). Nada se guarda hasta confirmar con `g` — `q`
+descarta.
+
+Al guardar imprime el comando **no interactivo equivalente**, con los
+secretos como `<clave>` en vez de su valor, para poder repetir la misma
+config en otra máquina o dejarla documentada sin filtrar nada. La forma
+con `clave=valor` no cambió en nada: sigue siendo la que usan scripts y
+CI. Sin terminal interactiva (pipe, CI, cron) el menú no se abre — se
+explica la forma manual y se sale, en vez de colgarse esperando una
+línea que nunca llega.
 
 **Plugins privados sin repo, con `--link`**: `asterion plugin install <carpeta>
 --link` registra esa carpeta tal cual está — nunca la clona ni la copia a
