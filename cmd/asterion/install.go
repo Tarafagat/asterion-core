@@ -63,15 +63,18 @@ func installPrerequirementsCmd() *cobra.Command {
 				return err
 			}
 
-			anyCloned := false
+			// Recompilar si algo cambió en disco — da igual si fue un
+			// repo nuevo o uno que avanzó: en los dos casos el binario ya
+			// instalado quedó con código viejo.
+			anyChange := false
 			for _, r := range results {
-				if r.Cloned {
-					anyCloned = true
+				if r.Cloned || r.Updated {
+					anyChange = true
 					break
 				}
 			}
 			rebuild := ""
-			if anyCloned {
+			if anyChange {
 				rebuild = rebuildSelf(workspaceDir)
 			}
 
@@ -106,6 +109,10 @@ func printPrereqResults(results []prereqs.Result) {
 			fmt.Printf("✗ %s — %s\n", r.Name, r.Error)
 		case r.Cloned:
 			fmt.Printf("✓ %s — clonado\n", r.Name)
+		case r.Updated:
+			fmt.Printf("✓ %s — %s\n", r.Name, r.Output)
+		case r.Output != "":
+			fmt.Printf("• %s — %s\n", r.Name, r.Output)
 		default:
 			fmt.Printf("✓ %s — ya estaba\n", r.Name)
 		}

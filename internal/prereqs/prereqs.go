@@ -37,11 +37,16 @@ var catalog = []struct {
 // que internal/upgrade.Result (Name/Dir/Output/Error), con Cloned en vez
 // de Changed.
 type Result struct {
-	Name   string `json:"name"`
-	Dir    string `json:"dir"`
-	Cloned bool   `json:"cloned"`
-	Output string `json:"output,omitempty"`
-	Error  string `json:"error,omitempty"`
+	Name string `json:"name"`
+	Dir  string `json:"dir"`
+	// Cloned: no existía y se clonó. Updated: ya existía y se
+	// fast-forwardeó a lo último. Los dos en false con Error vacío
+	// significa que ya estaba al día, o que se dejó intacto a propósito
+	// (ver Output: cambios locales sin commitear, detached HEAD).
+	Cloned  bool   `json:"cloned"`
+	Updated bool   `json:"updated"`
+	Output  string `json:"output,omitempty"`
+	Error   string `json:"error,omitempty"`
 }
 
 // Install procesa el catálogo entero contra workspaceDir. Un repo que
@@ -59,6 +64,58 @@ func Install(workspaceDir string) ([]Result, error) {
 	return results, nil
 }
 
+// updateExisting fast-forwardea un repo hermano que YA estaba en disco.
+// No alcanza con que exista: un hermano viejo rompe el build con un
+// error críptico adentro de otro repo (visto en vivo: asterion-language
+// desactualizado -> "undefined: agcaspec.RoleDecl" al compilar
+// asterion-graph-cognitive-architecture).
+//
+// Nunca se pisa trabajo de nadie: si hay cambios sin commitear, o el
+// repo está en detached HEAD, se deja exactamente como está y se dice
+// por qué. Un fallo al actualizar tampoco corta el proceso — se reporta
+// y se sigue con lo que haya en disco, mismo criterio que un clone
+// fallido.
+func updateExisting(dir string, result Result) Result {
+	if out, err := exec.Command("git", "-C", dir, "status", "--porcelain").Output(); err == nil && len(strings.TrimSpace(string(out))) > 0 {
+		result.Output = "tiene cambios locales sin commitear, no se tocó"
+		return result
+	}
+
+	branchOut, err := exec.Command("git", "-C", dir, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	branch := strings.TrimSpace(string(branchOut))
+	if err != nil || branch == "" || branch == "HEAD" {
+		result.Output = "en detached HEAD (o sin rama), no se tocó"
+		return result
+	}
+
+	// Rama explícita en vez de confiar en el upstream: un clone que
+	// quedó sin tracking info haría fallar un 'git pull' pelado con
+	// "There is no tracking information for the current branch".
+	before, _ := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	out, err := exec.Command("git", "-C", dir, "pull", "--ff-only", "origin", branch).CombinedOutput()
+	if err != nil {
+		result.Output = "ya estaba, pero no se pudo actualizar: " + strings.TrimSpace(string(out))
+		return result
+	}
+	after, _ := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+
+	if strings.TrimSpace(string(before)) != strings.TrimSpace(string(after)) {
+		result.Updated = true
+		result.Output = "actualizado a " + shortSHA(string(after))
+		return result
+	}
+	result.Output = "ya estaba, al día"
+	return result
+}
+
+func shortSHA(sha string) string {
+	sha = strings.TrimSpace(sha)
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
+}
+
 func installOne(workspaceDir, name, url string) Result {
 	dir := filepath.Join(workspaceDir, name)
 	result := Result{Name: name, Dir: dir}
@@ -69,8 +126,7 @@ func installOne(workspaceDir, name, url string) Result {
 			return result
 		}
 		if isUsableGitRepo(dir) {
-			result.Output = "ya estaba clonado"
-			return result
+			return updateExisting(dir, result)
 		}
 		// .git roto/incompleto (ej. un clone que se cortó a mitad) — se
 		// trata como si no existiera: se borra y se clona de nuevo, en

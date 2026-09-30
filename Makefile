@@ -25,7 +25,18 @@ VERSION := $(shell git log -1 --format=%s 2>/dev/null | grep -oE '^V\.?[0-9]+(\.
 # Repos hermanos que hacen falta para que go.mod resuelva sus
 # 'replace ... => ../X' — sin ellos, ni 'go build' ni 'go install'
 # arrancan siquiera (error real, visto en vivo en una instancia recién
-# clonada: "replacement directory ../asterion-lab does not exist"). Por
+# clonada: "replacement directory ../asterion-lab does not exist").
+#
+# No alcanza con que EXISTAN: tienen que estar al día entre sí. Un
+# hermano viejo rompe el build con un error críptico adentro de OTRO
+# repo (error real, visto en vivo en una instancia: asterion-core se
+# actualizó, asterion-graph-cognitive-architecture se clonó nuevo, pero
+# asterion-language quedó en la versión anterior y el build murió con
+# "undefined: agcaspec.RoleDecl" — un símbolo que el repo viejo no
+# tenía). Por eso un repo que ya estaba se fast-forwardea, salvo que
+# tenga cambios locales sin commitear: ahí no se toca nada (es un
+# workspace de desarrollo, el trabajo de quien lo está editando vale
+# más que la actualización automática) y se avisa explícitamente. Por
 # eso 'build'/'install' dependen de 'prerequirements' ACÁ ABAJO: tiene que
 # resolverse antes de compilar, no después — 'asterion install
 # prerequirements' (el comando equivalente ya compilado, ver
@@ -38,7 +49,20 @@ PREREQ_REPOS := asterion-lab asterion-language asterion-plugin-contract asterion
 prerequirements:
 	@for repo in $(PREREQ_REPOS); do \
 		if [ -d "../$$repo/.git" ] && git -C "../$$repo" rev-parse HEAD >/dev/null 2>&1; then \
-			echo "✓ $$repo — ya estaba"; \
+			branch="$$(git -C "../$$repo" rev-parse --abbrev-ref HEAD 2>/dev/null)"; \
+			if [ -n "$$(git -C "../$$repo" status --porcelain 2>/dev/null)" ]; then \
+				echo "• $$repo — tiene cambios locales sin commitear, no lo toco"; \
+			elif [ "$$branch" = "HEAD" ]; then \
+				echo "• $$repo — en detached HEAD, no lo toco"; \
+			elif out="$$(git -C "../$$repo" pull --ff-only origin "$$branch" 2>&1)"; then \
+				case "$$out" in \
+					*"Already up to date"*|*"Ya est"*) echo "✓ $$repo — al día" ;; \
+					*) echo "✓ $$repo — actualizado" ;; \
+				esac; \
+			else \
+				echo "⚠ $$repo — no pude actualizarlo, sigo con lo que hay en disco:"; \
+				echo "$$out" | sed 's/^/    /'; \
+			fi; \
 		else \
 			rm -rf "../$$repo"; \
 			if out="$$(git clone --depth 1 "https://github.com/Tarafagat/$$repo.git" "../$$repo" 2>&1)"; then \
