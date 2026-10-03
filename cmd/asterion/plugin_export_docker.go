@@ -17,11 +17,11 @@ import (
 // arquitectura o el layout de rutas del contenedor.
 func writeDockerfile(path string, installed plugins.Installed, port int, includeFrontend, isPython bool) error {
 	var b strings.Builder
-	b.WriteString("# Generado por 'asterion plugin export' — punto de partida, ajustalo si hace\n")
+	b.WriteString("# Generado por 'asterion plugin export' — punto de partida, ajústalo si hace\n")
 	b.WriteString("# falta. Asterion nunca corre 'docker build' por su cuenta; este archivo es\n")
-	b.WriteString("# para que lo uses vos cuando quieras una imagen real.\n#\n")
+	b.WriteString("# para que lo uses cuando quieras una imagen real.\n#\n")
 	b.WriteString("# .env_asterion_produced NO se copia a la imagen a propósito (tiene secretos\n")
-	b.WriteString("# reales) — pasalo en runtime:\n")
+	b.WriteString("# reales) — pásalo en runtime:\n")
 	fmt.Fprintf(&b, "#   docker build -t %s .\n", installed.Name)
 	fmt.Fprintf(&b, "#   docker run --env-file .env_asterion_produced -p %d:%d %s\n#\n", port, port, installed.Name)
 	b.WriteString("# ⚠️  Si el código de este plugin escucha en 127.0.0.1 (la convención de\n")
@@ -113,14 +113,14 @@ func writeExportReadme(path string, installed plugins.Installed, includeFrontend
 
 	b.WriteString("## ⚠️ `.env_asterion_produced`\n\n")
 	b.WriteString("Contiene los secretos reales configurados para este plugin. Permisos 0600,\n")
-	b.WriteString("excluido en `.gitignore` — **nunca lo commitees**. Si se filtra, rotá\n")
+	b.WriteString("excluido en `.gitignore` — **nunca lo commitees**. Si se filtra, rota\n")
 	b.WriteString("cualquier secreto que tenga adentro.\n\n")
 
 	b.WriteString("## Correrlo directo (sin Docker)\n\n")
 	if isPython {
 		b.WriteString("Este es un plugin Python — su venv NO se copió (los venv no son portables\n")
 		b.WriteString("entre máquinas, referencian rutas absolutas del intérprete original).\n")
-		b.WriteString("Recreálo acá antes de arrancar:\n\n")
+		b.WriteString("Recréalo acá antes de arrancar:\n\n")
 		b.WriteString("```sh\n")
 		venvBinDir := filepath.Dir(installed.Manifest.Start.Command)
 		venvDir := filepath.Dir(venvBinDir)
@@ -143,14 +143,14 @@ func writeExportReadme(path string, installed plugins.Installed, includeFrontend
 	fmt.Fprintf(&b, "docker build -t %s .\n", installed.Name)
 	fmt.Fprintf(&b, "docker run --env-file .env_asterion_produced -p 8080:8080 %s\n", installed.Name)
 	b.WriteString("```\n\n")
-	b.WriteString("El `Dockerfile` es un punto de partida generado automáticamente — revisalo\n")
+	b.WriteString("El `Dockerfile` es un punto de partida generado automáticamente — revísalo\n")
 	b.WriteString("antes de confiar en él para producción.\n\n")
 	b.WriteString("**⚠️ Si `docker run -p` no responde**: confirmado en vivo — si el código de\n")
 	b.WriteString("este plugin escucha en `127.0.0.1` (la convención de desarrollo local de\n")
 	b.WriteString("Asterion), el puerto publicado de Docker no llega ahí (apunta a la interfaz\n")
 	b.WriteString("real del contenedor, nunca a su loopback). Para correr en Docker, el código\n")
 	b.WriteString("tiene que escuchar en `0.0.0.0` — un cambio en el propio plugin, no algo que\n")
-	b.WriteString("este export pueda resolver por vos.\n\n")
+	b.WriteString("este export pueda resolver automáticamente.\n\n")
 
 	if includeFrontend {
 		b.WriteString("## Frontend\n\n")

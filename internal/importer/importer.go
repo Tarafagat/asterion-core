@@ -3,9 +3,9 @@
 // docker-compose.yml de siempre— y arma un borrador de app.asterion a
 // partir de lo que encuentra.
 //
-// La idea completa es la puerta de entrada: en vez de "reescribí tu
-// infraestructura para usar Asterion", el camino es "corré esto acá
-// adentro y mirá qué detectó". Lo que no se pudo inferir con confianza
+// La idea completa es la puerta de entrada: en vez de "reescribe tu
+// infraestructura para usar Asterion", el camino es "ejecuta esto acá
+// adentro y mira qué detectó". Lo que no se pudo inferir con confianza
 // real se marca así, explícito, nunca se completa adivinando en silencio
 // — un app.asterion con un start.command inventado que compila pero no
 // arranca es peor que uno que para y dice qué completar a mano.
@@ -128,7 +128,7 @@ func Run(dir string) (*Scan, error) {
 	detectServices(s)
 
 	if s.Start.Value == "" {
-		s.warn("no pude inferir un comando de arranque — completá Contract.start(command=...) a mano")
+		s.warn("no pude inferir un comando de arranque — completa Contract.start(command=...) a mano")
 	}
 	if s.Language.Value == "" {
 		s.warn("no pude identificar el lenguaje del backend — no se va a poder usar 'asterion plugin build'")

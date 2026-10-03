@@ -26,7 +26,7 @@ func EnsureKey(keyPath string) ([]byte, error) {
 	if err == nil {
 		key, decErr := base64.StdEncoding.DecodeString(string(data))
 		if decErr != nil || len(key) != 32 {
-			return nil, fmt.Errorf("%s está corrupto — no se puede descifrar lo ya guardado con esta clave. Si no hay nada guardado todavía que dependa de ella, borrala y se genera una nueva", keyPath)
+			return nil, fmt.Errorf("%s está corrupto — no se puede descifrar lo ya guardado con esta clave. Si no hay nada guardado todavía que dependa de ella, bórrala y se genera una nueva", keyPath)
 		}
 		return key, nil
 	}

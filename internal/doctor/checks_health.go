@@ -118,7 +118,7 @@ func checkEnvironment(ctx context.Context, installed plugins.Installed) []Check 
 		bin, versionFlag = pythonBin(), "--version"
 	default:
 		return []Check{{Section: "Environment", Name: "Lenguaje", Severity: Warn,
-			Detail: fmt.Sprintf("declara language.name=%q — Asterion solo sabe compilar 'go' y 'python' hoy; preparalo a mano", lang.Name)}}
+			Detail: fmt.Sprintf("declara language.name=%q — Asterion solo sabe compilar 'go' y 'python' hoy; prepáralo a mano", lang.Name)}}
 	}
 
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -134,7 +134,7 @@ func checkEnvironment(ctx context.Context, installed plugins.Installed) []Check 
 	detail := installedVersion
 	if lang.Version != "" && !strings.Contains(installedVersion, lang.Version) {
 		sev = Warn
-		detail = fmt.Sprintf("declara %s, esta máquina tiene %s — revisá si importa para este plugin", lang.Version, installedVersion)
+		detail = fmt.Sprintf("declara %s, esta máquina tiene %s — revisa si importa para este plugin", lang.Version, installedVersion)
 	}
 	return []Check{{Section: "Environment", Name: strings.ToUpper(lang.Name[:1]) + lang.Name[1:], Severity: sev, Detail: detail}}
 }

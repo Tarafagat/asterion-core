@@ -218,7 +218,7 @@ func graphDecisionsCmd() *cobra.Command {
 			}
 			if len(list) == 0 {
 				fmt.Printf("Todavía no hay ninguna decisión registrada para %q.\n", rt.Intelligence.Name)
-				fmt.Printf("Corré 'asterion graph act %s --goal \"...\"' para generar la primera.\n", args[0])
+				fmt.Printf("Ejecuta 'asterion graph act %s --goal \"...\"' para generar la primera.\n", args[0])
 				return nil
 			}
 			for _, d := range list {

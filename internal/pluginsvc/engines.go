@@ -152,10 +152,10 @@ func pingRedis(ctx context.Context, r engineRunner, spec apc.ServiceSpec, passwo
 		strings.Contains(strings.ToUpper(out), "WRONGPASS") {
 		if password == "" {
 			if spec.MapsPassword == "" {
-				return fmt.Errorf("el redis de %s:%d pide contraseña, pero el servicio %q no declaró ningún maps_password en el plugin.yaml donde guardarla — agregalo con Contract.service(..., maps_password=\"<clave>\")",
+				return fmt.Errorf("el redis de %s:%d pide contraseña, pero el servicio %q no declaró ningún maps_password en el plugin.yaml donde guardarla — agrégalo con Contract.service(..., maps_password=\"<clave>\")",
 					host, port, spec.Name)
 			}
-			return fmt.Errorf("el redis de %s:%d pide contraseña y no hay ninguna guardada en %s — cargala con 'asterion plugin services connect <plugin> %s'",
+			return fmt.Errorf("el redis de %s:%d pide contraseña y no hay ninguna guardada en %s — cárgala con 'asterion plugin services connect <plugin> %s'",
 				host, port, spec.MapsPassword, spec.Name)
 		}
 		return fmt.Errorf("el redis de %s:%d rechazó la contraseña guardada — corregila con 'asterion plugin services connect'", host, port)
@@ -327,8 +327,8 @@ func decidePassword(exists bool, opts ProvisionOptions, res *Resolution) (string
 	}
 	return "", fmt.Errorf("el usuario %q ya existe en el motor, pero no hay ninguna contraseña guardada para él en la config del plugin.\n"+
 		"    No puedo averiguar la que tiene (ningún motor la devuelve) ni inventar una: quedaría guardada una credencial que no funciona.\n"+
-		"    Elegí una: volvé a correr con --rotate-password para asignarle una nueva (ojo: si algo más usa ese mismo usuario, deja de andar),\n"+
-		"    o cargá la que ya tenga a mano con 'asterion plugin services connect'", res.User)
+		"    Elegí una: vuelve a correr con --rotate-password para asignarle una nueva (ojo: si algo más usa ese mismo usuario, deja de andar),\n"+
+		"    o carga la que ya tenga a mano con 'asterion plugin services connect'", res.User)
 }
 
 // verifyLogin entra con la credencial que se va a guardar. Es el único
@@ -351,7 +351,7 @@ func verifyLogin(ctx context.Context, r engineRunner, kind string, res *Resoluti
 	if err != nil {
 		return fmt.Errorf("la credencial que iba a guardar no funciona: %q no pudo entrar a %q (%s).\n"+
 			"    No la guardo: dejaría al plugin con algo que no sirve. Si ese usuario ya existía con otra contraseña,\n"+
-			"    corré con --rotate-password, o cargá la correcta con 'asterion plugin services connect'",
+			"    ejecuta con --rotate-password, o carga la correcta con 'asterion plugin services connect'",
 			res.User, res.Database, firstLine(out, err))
 	}
 	return nil

@@ -199,7 +199,7 @@ func requireSessionEmail() (cliconfig.Config, string, error) {
 	}
 	creds, err := cliconfig.LoadCredentials()
 	if err != nil || creds.Email == "" {
-		return cfg, "", fmt.Errorf("no hay sesión guardada, corré 'asterion cloud login' primero")
+		return cfg, "", fmt.Errorf("no hay sesión guardada, ejecuta 'asterion cloud login' primero")
 	}
 	return cfg, creds.Email, nil
 }
@@ -236,11 +236,11 @@ func resolveProjectSlug(client *apiclient.Client, flagProjectSlug string) (strin
 	}
 
 	if len(projects) == 0 {
-		fmt.Println("Todavía no tenés ningún proyecto en Asterion Cloud.")
+		fmt.Println("Todavía no tienes ningún proyecto en Asterion Cloud.")
 		fmt.Print("¿Creamos uno ahora? [S/n]: ")
 		answer := strings.ToLower(trimNewline(readLine()))
 		if answer != "" && answer != "s" && answer != "si" && answer != "sí" {
-			return "", fmt.Errorf("no hay proyecto para usar — creá uno con la web o pasá --project")
+			return "", fmt.Errorf("no hay proyecto para usar — crea uno con la web o pasa --project")
 		}
 		fmt.Print("Nombre del proyecto: ")
 		name := trimNewline(readLine())
@@ -321,7 +321,7 @@ func connectLocalInstance(projectSlug string, instance localstore.Instance) (ins
 	} else {
 		fmt.Fprintf(os.Stderr,
 			"⚠ No pude detectar las características reales de esta máquina (%s) — Asterion Cloud va a "+
-				"mostrar valores por defecto (1 CPU / 1GB); podés corregirlos a mano desde el dashboard.\n",
+				"mostrar valores por defecto (1 CPU / 1GB); puedes corregirlos a mano desde el dashboard.\n",
 			sysErr,
 		)
 		payload["cpu_cores"] = 1
@@ -381,7 +381,7 @@ func cloudConnectCmd() *cobra.Command {
 				if err := saveAgentKey(instance.ID, rawKey); err != nil {
 					return err
 				}
-				fmt.Println("  Clave del agente guardada localmente — corré 'asterion agent-run --local " + instance.ID + "' para empezar a reportar métricas.")
+				fmt.Println("  Clave del agente guardada localmente — ejecuta 'asterion agent-run --local " + instance.ID + "' para empezar a reportar métricas.")
 			}
 
 			fmt.Printf("\nInstancia:\n  %s (id local %s)\n\nCloud:\n  proyecto %s\n\nEstado:\n  ● Conectado (id remoto %d)\n", instance.Name, instance.ID, resolvedProjectSlug, instanceID)
@@ -500,7 +500,7 @@ func cloudInstallAgentCmd() *cobra.Command {
 
 			if err := installAgentService(instance.ID); err != nil {
 				fmt.Println("⚠ No se pudo instalar el servicio del agente automáticamente:", err)
-				fmt.Printf("  Corré manualmente: asterion agent-run --local %s\n", instance.ID)
+				fmt.Printf("  Ejecuta manualmente: asterion agent-run --local %s\n", instance.ID)
 			} else {
 				fmt.Println("✓ Agente instalado y corriendo (systemd --user)")
 			}

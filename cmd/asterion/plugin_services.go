@@ -55,7 +55,7 @@ func loadServices(name string) (plugins.Installed, []apc.ServiceSpec, map[string
 	if len(installed.Manifest.Services) == 0 {
 		return installed, nil, nil, fmt.Errorf(
 			"%q no declara ningún servicio externo en su plugin.yaml — si necesita una base o un Redis, "+
-				"declaralo con Contract.service(...) (ver asterion-language/spec/grammar.md)", installed.Name)
+				"decláralo con Contract.service(...) (ver asterion-language/spec/grammar.md)", installed.Name)
 	}
 	config, err := plugins.GetConfig(name)
 	if err != nil {
@@ -92,7 +92,7 @@ func runServicesStatus(name string) error {
 
 	fmt.Println()
 	if pending == 0 {
-		fmt.Printf("Todo listo. Arrancalo con: asterion plugin start %s\n", installed.Name)
+		fmt.Printf("Todo listo. Arráncalo con: asterion plugin start %s\n", installed.Name)
 		return nil
 	}
 	if pending == 1 {
@@ -244,7 +244,7 @@ func runServicesUp(name, only string, create, rotate bool, admin pluginsvc.Admin
 func createEngine(ctx context.Context, spec apc.ServiceSpec, pluginName string, st pluginsvc.Status) (pluginsvc.Status, pluginsvc.AdminCreds, error) {
 	if reason := pluginsvc.DockerUnavailableReason(); reason != "" {
 		return st, pluginsvc.AdminCreds{}, fmt.Errorf(
-			"no puedo levantar un %s en un contenedor: %s.\n    Alternativa sin Docker: apuntá este servicio a uno que ya exista con 'asterion plugin services connect %s %s'",
+			"no puedo levantar un %s en un contenedor: %s.\n    Alternativa sin Docker: apunta este servicio a uno que ya exista con 'asterion plugin services connect %s %s'",
 			spec.Kind, reason, pluginName, spec.Name)
 	}
 
@@ -328,7 +328,7 @@ func runServicesConnect(name, serviceName string) error {
 	}
 
 	if !stdinIsTerminal() {
-		return fmt.Errorf("no hay una terminal interactiva — usá 'asterion plugin config set %s %s=... %s=...' directamente",
+		return fmt.Errorf("no hay una terminal interactiva — usa 'asterion plugin config set %s %s=... %s=...' directamente",
 			installed.Name, spec.MapsHost, spec.MapsPort)
 	}
 
@@ -397,7 +397,7 @@ func runServicesConnect(name, serviceName string) error {
 	if st.Reachable {
 		fmt.Printf("✓ %s:%d respondió\n", st.Host, st.Port)
 	} else {
-		fmt.Printf("⚠ %s:%d no respondió — los datos quedaron guardados igual, pero revisá host/puerto/firewall\n", st.Host, st.Port)
+		fmt.Printf("⚠ %s:%d no respondió — los datos quedaron guardados igual, pero revisa host/puerto/firewall\n", st.Host, st.Port)
 	}
 	return nil
 }

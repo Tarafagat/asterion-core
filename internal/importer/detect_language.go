@@ -73,7 +73,7 @@ func detectLanguage(s *Scan) {
 	if s.has("Cargo.toml") {
 		s.sawFile("Cargo.toml")
 		s.Language = Finding{Value: "rust", Confidence: Declared, Source: "Cargo.toml"}
-		s.warn("detecté Rust (Cargo.toml) — Asterion hoy compila 'go' y 'python' con 'plugin build'; para Rust vas a compilar vos y declarar start.command apuntando al binario ya armado")
+		s.warn("detecté Rust (Cargo.toml) — Asterion hoy compila 'go' y 'python' con 'plugin build'; para Rust lo compilas a mano y declaras start.command apuntando al binario ya armado")
 		return
 	}
 	if text, ok := readFile(s.Dir, "package.json"); ok {
@@ -86,7 +86,7 @@ func detectLanguage(s *Scan) {
 		if doc.Engines.Node != "" {
 			s.LangVer = Finding{Value: doc.Engines.Node, Confidence: Declared, Source: "package.json (engines.node)"}
 		}
-		s.warn("detecté Node como backend (package.json, sin go.mod/requirements.txt) — Asterion hoy compila 'go' y 'python' con 'plugin build'; para Node instalá las dependencias vos mismo (npm ci) antes de 'plugin start', o declarálo en un Dockerfile propio")
+		s.warn("detecté Node como backend (package.json, sin go.mod/requirements.txt) — Asterion hoy compila 'go' y 'python' con 'plugin build'; para Node instala las dependencias a mano (npm ci) antes de 'plugin start', o decláralo en un Dockerfile propio")
 		return
 	}
 	// Language queda vacío — Run() ya lo marca como warning.

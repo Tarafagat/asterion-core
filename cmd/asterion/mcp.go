@@ -93,7 +93,7 @@ func ensureMCPServerEntry() error {
 	doc := map[string]any{}
 	if data, err := os.ReadFile(mcpConfigFile); err == nil {
 		if err := json.Unmarshal(data, &doc); err != nil {
-			return fmt.Errorf("%s ya existe pero no es JSON válido — arreglalo a mano antes: %w", mcpConfigFile, err)
+			return fmt.Errorf("%s ya existe pero no es JSON válido — arréglalo a mano antes: %w", mcpConfigFile, err)
 		}
 	}
 
@@ -120,7 +120,7 @@ func ensureMCPServerEntry() error {
 func writeAsterionMD(force bool) error {
 	if !force {
 		if _, err := os.Stat(asterionMDFile); err == nil {
-			return fmt.Errorf("%s ya existe — usá --force para sobrescribirlo", asterionMDFile)
+			return fmt.Errorf("%s ya existe — usa --force para sobrescribirlo", asterionMDFile)
 		}
 	}
 	return os.WriteFile(asterionMDFile, []byte(asterionMDTemplate), 0o644)
@@ -154,8 +154,8 @@ const asterionMDTemplate = `# Asterion — infraestructura para agentes de códi
 
 Este proyecto tiene un servidor MCP propio (` + "`asterion mcp serve`" + `, declarado en
 ` + "`.mcp.json`" + `) que deja pedir infraestructura real sin tocarla a mano ni tener
-acceso de root a esta máquina. La idea: en vez de que vos (el agente)
-corras ` + "`docker run postgres`" + ` a ciegas, le pedís a Asterion un Postgres y
+acceso de root a esta máquina. La idea: en vez de que el agente
+corra ` + "`docker run postgres`" + ` a ciegas, le pides a Asterion un Postgres y
 te da uno ya configurado, con credenciales de aplicación — nunca las de
 administrador del motor, nunca un shell del host.
 
@@ -198,7 +198,7 @@ administrador del motor, nunca un shell del host.
 ## Cómo llegar a Asterion sin pasar por acá
 
 Todo lo de arriba también es un comando de ` + "`asterion`" + ` directo, por si
-preferís correrlo vos mismo en vez de que lo llame el agente:
+prefieres ejecutarlo directamente en vez de que lo llame el agente:
 
 - ` + "`asterion doctor [plugin]`" + ` — diagnóstico de salud/entorno/seguridad/deployment.
 - ` + "`asterion import [dir]`" + ` — genera un ` + "`app.asterion`" + ` de un proyecto existente.

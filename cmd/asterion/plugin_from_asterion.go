@@ -65,7 +65,7 @@ func runPluginFromAsterion(asterionPath, out string, force bool) error {
 	}
 	outPath := filepath.Join(outDir, "plugin.yaml")
 	if _, err := os.Stat(outPath); err == nil && !force {
-		return fmt.Errorf("%s ya existe — pasá --force para sobrescribirlo (el .asterion es la fuente, recompilar es el flujo normal)", outPath)
+		return fmt.Errorf("%s ya existe — pasa --force para sobrescribirlo (el .asterion es la fuente, recompilar es el flujo normal)", outPath)
 	}
 
 	data, err := yaml.Marshal(manifest)

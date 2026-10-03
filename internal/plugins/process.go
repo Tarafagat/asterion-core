@@ -232,7 +232,7 @@ func Start(name string) (Installed, error) {
 		return installed, err
 	}
 	if healthErr != nil {
-		return installed, fmt.Errorf("el proceso arrancó (pid %d) pero el health check falló — revisá %s: %w", pid, logFile, healthErr)
+		return installed, fmt.Errorf("el proceso arrancó (pid %d) pero el health check falló — revisa %s: %w", pid, logFile, healthErr)
 	}
 	return installed, nil
 }

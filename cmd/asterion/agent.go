@@ -75,7 +75,7 @@ func agentEnableServiceControlCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			username := args[0]
 			if os.Geteuid() != 0 {
-				return fmt.Errorf("necesita sudo: corré 'sudo asterion agent enable-service-control %s'", username)
+				return fmt.Errorf("necesita sudo: ejecuta 'sudo asterion agent enable-service-control %s'", username)
 			}
 			if _, err := user.Lookup(username); err != nil {
 				return fmt.Errorf("%q no es un usuario del sistema válido en esta máquina: %w", username, err)
@@ -110,7 +110,7 @@ func agentDisableServiceControlCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			username := args[0]
 			if os.Geteuid() != 0 {
-				return fmt.Errorf("necesita sudo: corré 'sudo asterion agent disable-service-control %s'", username)
+				return fmt.Errorf("necesita sudo: ejecuta 'sudo asterion agent disable-service-control %s'", username)
 			}
 			path := serviceControlSudoersPrefix + username
 			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
@@ -129,7 +129,7 @@ func agentStatusCmd() *cobra.Command {
 		Long: "Sin argumento, identifica sola la instancia que representa A ESTA MÁQUINA — la que\n" +
 			"'asterion cloud install-agent' registró acá (Host=localhost es la marca real, no el\n" +
 			"nombre: funciona aunque se haya usado --name para elegir un nombre distinto del\n" +
-			"hostname). Pasá un nombre explícito para consultar cualquier otra instancia de tu\n" +
+			"hostname). Pasa un nombre explícito para consultar cualquier otra instancia de tu\n" +
 			"inventario local.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -185,7 +185,7 @@ func agentStatusCmd() *cobra.Command {
 // agentRestartCmd reinicia el proceso local del agente (systemd --user en
 // Linux, launchd en macOS) SIN tocar nada del lado de Cloud — a diferencia
 // de 'cloud install-agent'/'cloud disconnect'+'connect', que sirven para
-// (re)vincular la instancia, esto es solo "el binario cambió, hacé que el
+// (re)vincular la instancia, esto es solo "el binario cambió, haz que el
 // servicio ya instalado corra la versión nueva". Reusa installAgentService
 // tal cual (mismo código que ya usa 'cloud install-agent' para instalar el
 // servicio la primera vez) — sigue siendo idempotente, reescribe el mismo
@@ -220,7 +220,7 @@ func agentRestartCmd() *cobra.Command {
 			}
 			if _, hasKey := keys[instance.ID]; !hasKey {
 				return fmt.Errorf(
-					"%q no tiene una clave de agente guardada todavía — instalalo primero con 'asterion cloud install-agent'",
+					"%q no tiene una clave de agente guardada todavía — instálalo primero con 'asterion cloud install-agent'",
 					instance.Name,
 				)
 			}
@@ -258,8 +258,8 @@ func resolveSelfInstance() (localstore.Instance, error) {
 	switch len(self) {
 	case 0:
 		return localstore.Instance{}, fmt.Errorf(
-			"esta máquina no tiene ningún agente instalado — corré 'asterion cloud install-agent' primero, " +
-				"o pasá el nombre de una instancia local: 'asterion agent status <nombre>'",
+			"esta máquina no tiene ningún agente instalado — ejecuta 'asterion cloud install-agent' primero, " +
+				"o pasa el nombre de una instancia local: 'asterion agent status <nombre>'",
 		)
 	case 1:
 		return self[0], nil
@@ -269,7 +269,7 @@ func resolveSelfInstance() (localstore.Instance, error) {
 			names[i] = inst.Name
 		}
 		return localstore.Instance{}, fmt.Errorf(
-			"hay %d instancias locales que podrían ser esta máquina (%s) — pasá el nombre explícito: 'asterion agent status <nombre>'",
+			"hay %d instancias locales que podrían ser esta máquina (%s) — pasa el nombre explícito: 'asterion agent status <nombre>'",
 			len(self), strings.Join(names, ", "),
 		)
 	}
@@ -367,7 +367,7 @@ func loadAgentKey(localID string) (string, error) {
 	}
 	stored, ok := keys[localID]
 	if !ok {
-		return "", fmt.Errorf("no hay una clave de agente guardada para %q — corré 'asterion cloud connect' o 'asterion cloud install-agent' primero", localID)
+		return "", fmt.Errorf("no hay una clave de agente guardada para %q — ejecuta 'asterion cloud connect' o 'asterion cloud install-agent' primero", localID)
 	}
 	key, err := secretboxKey()
 	if err != nil {

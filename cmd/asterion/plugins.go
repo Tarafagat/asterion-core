@@ -159,7 +159,7 @@ func pluginInstallCmd() *cobra.Command {
 			"Con --link: NO clona ni copia nada — registra la carpeta indicada tal cual está,\n" +
 			"pensado para desarrollar (o simplemente probar) un plugin privado sin publicarlo a\n" +
 			"ningún repo, ni siquiera tener uno local. Los cambios que hagas en el código se ven\n" +
-			"la próxima vez que lo arranques (compilalo vos, Asterion nunca compila nada). Por\n" +
+			"la próxima vez que lo arranques (lo compilas manualmente, Asterion nunca compila nada). Por\n" +
 			"seguridad, 'asterion plugin remove' de un plugin --link NUNCA borra la carpeta —\n" +
 			"solo lo desregistra.\n\n" +
 			"De paso deja lista ~/.config/asterion/plugins/repos/asterion-plugin-contract (clonada\n" +
@@ -224,7 +224,7 @@ func pluginInstallCmd() *cobra.Command {
 					names = append(names, fmt.Sprintf("%s (%s)", s.Name, s.Kind))
 				}
 				fmt.Printf("\nTambién necesita infraestructura externa: %s\n", strings.Join(names, ", "))
-				fmt.Printf("Mirá qué hay y qué falta con: asterion plugin services %s\n", installed.Name)
+				fmt.Printf("Mira qué hay y qué falta con: asterion plugin services %s\n", installed.Name)
 			}
 			fmt.Printf("\nArrancalo con: asterion plugin start %s\n", installed.Name)
 			return nil
@@ -648,7 +648,7 @@ func pluginConfigSetCmd() *cobra.Command {
 			name := args[0]
 			if len(args) == 1 {
 				if asJSON {
-					return fmt.Errorf("--json no aplica al menú interactivo — pasá los pares clave=valor")
+					return fmt.Errorf("--json no aplica al menú interactivo — pasa los pares clave=valor")
 				}
 				return runConfigWizard(name)
 			}
@@ -656,7 +656,7 @@ func pluginConfigSetCmd() *cobra.Command {
 			for _, kv := range args[1:] {
 				parts := strings.SplitN(kv, "=", 2)
 				if len(parts) != 2 || parts[0] == "" {
-					return fmt.Errorf("formato inválido %q — usá clave=valor", kv)
+					return fmt.Errorf("formato inválido %q — usa clave=valor", kv)
 				}
 				values[parts[0]] = parts[1]
 			}
@@ -760,7 +760,7 @@ func pluginConnectCmd() *cobra.Command {
 			"Si se omite [name] (y no se pasa --all), lista los plugins instalados en esta\n" +
 			"máquina para elegir uno (igual que 'asterion plugin find'). Si se omite\n" +
 			"--project, lista tus proyectos de Asterion Cloud para elegir uno, u ofrece crear\n" +
-			"uno nuevo si todavía no tenés ninguno — con --all, ese proyecto se resuelve una\n" +
+			"uno nuevo si todavía no tienes ninguno — con --all, ese proyecto se resuelve una\n" +
 			"sola vez y se usa para todos.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -769,7 +769,7 @@ func pluginConnectCmd() *cobra.Command {
 				name = args[0]
 			}
 			if all && name != "" {
-				return fmt.Errorf("pasá un nombre o --all, no los dos")
+				return fmt.Errorf("pasa un nombre o --all, no los dos")
 			}
 
 			client, err := newAPIClient()
@@ -878,7 +878,7 @@ func pluginDisconnectCmd() *cobra.Command {
 				resolvedProjectSlug = installed.ConnectedProjectSlug
 			}
 			if resolvedProjectSlug == "" {
-				return fmt.Errorf("no sé a qué proyecto está conectado %q — pasá --project", installed.Name)
+				return fmt.Errorf("no sé a qué proyecto está conectado %q — pasa --project", installed.Name)
 			}
 
 			cfg, email, err := requireSessionEmail()

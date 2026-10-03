@@ -68,7 +68,7 @@ func (c *Client) do(method, path string, body any, out any) error {
 	if c.TokenFunc != nil {
 		token, err := c.TokenFunc()
 		if err != nil {
-			return fmt.Errorf("no se pudo obtener un token válido, corré 'asterion login': %w", err)
+			return fmt.Errorf("no se pudo obtener un token válido, ejecuta 'asterion login': %w", err)
 		}
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

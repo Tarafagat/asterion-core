@@ -75,11 +75,11 @@ func installGit(repoURL, nameOverride, ref string) (Installed, error) {
 		name = DeriveName(repoURL)
 	}
 	if !apc.IsValidName(name) {
-		return Installed{}, fmt.Errorf("no pude derivar un nombre de plugin válido de %q — pasá uno explícito con --name", repoURL)
+		return Installed{}, fmt.Errorf("no pude derivar un nombre de plugin válido de %q — pasa uno explícito con --name", repoURL)
 	}
 
 	if _, err := Get(name); err == nil {
-		return Installed{}, fmt.Errorf("ya hay un plugin instalado llamado %q — 'asterion plugin remove %s' primero si querés reinstalarlo", name, name)
+		return Installed{}, fmt.Errorf("ya hay un plugin instalado llamado %q — 'asterion plugin remove %s' primero si quieres reinstalarlo", name, name)
 	}
 
 	dir, err := ReposDir(name)
@@ -87,11 +87,11 @@ func installGit(repoURL, nameOverride, ref string) (Installed, error) {
 		return Installed{}, err
 	}
 	if _, err := os.Stat(dir); err == nil {
-		return Installed{}, fmt.Errorf("%s ya existe en disco pero no está registrado — borralo a mano o elegí otro --name", dir)
+		return Installed{}, fmt.Errorf("%s ya existe en disco pero no está registrado — bórralo a mano o elige otro --name", dir)
 	}
 
 	if _, err := exec.LookPath("git"); err != nil {
-		return Installed{}, fmt.Errorf("necesito 'git' en el PATH para instalar plugins (clona el repo del plugin) — instalalo y reintentá")
+		return Installed{}, fmt.Errorf("necesito 'git' en el PATH para instalar plugins (clona el repo del plugin) — instálalo y reintenta")
 	}
 
 	// Con ref: clone completo, sin --depth 1 — un shallow clone no puede
@@ -132,7 +132,7 @@ func installGit(repoURL, nameOverride, ref string) (Installed, error) {
 		// layout en disco, se exige que coincidan.
 		_ = os.RemoveAll(dir)
 		return Installed{}, fmt.Errorf(
-			"plugin.yaml declara name=%q pero se instaló como %q — usá --name %s para que coincidan",
+			"plugin.yaml declara name=%q pero se instaló como %q — usa --name %s para que coincidan",
 			manifest.Name, name, manifest.Name,
 		)
 	}
@@ -190,16 +190,16 @@ func InstallLinked(dirPath, nameOverride string) (Installed, error) {
 		name = manifest.Name
 	}
 	if !apc.IsValidName(name) {
-		return Installed{}, fmt.Errorf("no pude derivar un nombre de plugin válido de %q — pasá uno explícito con --name", name)
+		return Installed{}, fmt.Errorf("no pude derivar un nombre de plugin válido de %q — pasa uno explícito con --name", name)
 	}
 	if manifest.Name != name {
 		return Installed{}, fmt.Errorf(
-			"plugin.yaml en %s declara name=%q — usá --name %s (o dejá --name vacío para usar ese nombre tal cual)",
+			"plugin.yaml en %s declara name=%q — usa --name %s (o deja --name vacío para usar ese nombre tal cual)",
 			abs, manifest.Name, manifest.Name,
 		)
 	}
 	if _, err := Get(name); err == nil {
-		return Installed{}, fmt.Errorf("ya hay un plugin instalado llamado %q — 'asterion plugin remove %s' primero si querés reinstalarlo", name, name)
+		return Installed{}, fmt.Errorf("ya hay un plugin instalado llamado %q — 'asterion plugin remove %s' primero si quieres reinstalarlo", name, name)
 	}
 
 	installed := Installed{

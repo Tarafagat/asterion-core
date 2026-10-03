@@ -50,7 +50,7 @@ func provisionDescribeCmd() *cobra.Command {
 	var resourceType, specInline, specFile string
 	cmd := &cobra.Command{
 		Use:   "describe",
-		Short: "Paso 1: describe qué querés crear (network | instance | managed_database | storage_bucket)",
+		Short: "Paso 1: describe qué quieres crear (network | instance | managed_database | storage_bucket)",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var raw []byte
 			var err error
@@ -60,7 +60,7 @@ func provisionDescribeCmd() *cobra.Command {
 			case specInline != "":
 				raw = []byte(specInline)
 			default:
-				return fmt.Errorf("pasá --spec '{...}' o --spec-file archivo.json con la descripción del recurso")
+				return fmt.Errorf("pasa --spec '{...}' o --spec-file archivo.json con la descripción del recurso")
 			}
 			if err != nil {
 				return err

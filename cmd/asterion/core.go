@@ -55,7 +55,7 @@ func coreServeCmd() *cobra.Command {
 			"y las operaciones de aprovisionamiento que ya estén implementadas. Es lo que 'asterion\n" +
 			"providers'/'asterion capabilities' consultan localmente, y lo mismo que Asterion Cloud\n" +
 			"espera en CORE_SERVICE_URL.\n\n" +
-			"Por default corre en primer plano (Ctrl-C para parar) — para un deploy real seguí\n" +
+			"Por default corre en primer plano (Ctrl-C para parar) — para un deploy real sigue\n" +
 			"administrándolo con systemd/tu gestor de procesos, igual que cualquier otro servicio\n" +
 			"(ver el README, sección 'Levantar asterion-core'). --background es para dejarlo\n" +
 			"corriendo rápido en esta misma máquina sin armar una unit de systemd (ej. para probar\n" +
@@ -64,7 +64,7 @@ func coreServeCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if background {
 				if _, alive, statusErr := localserve.Status(localserve.CoreServeName); statusErr == nil && alive {
-					return fmt.Errorf("asterion-core ya está corriendo en segundo plano — 'asterion core stop' primero si querés reiniciarlo (o usá 'asterion core restart')")
+					return fmt.Errorf("asterion-core ya está corriendo en segundo plano — 'asterion core stop' primero si quieres reiniciarlo (o usa 'asterion core restart')")
 				}
 				return runCoreBackground(addr)
 			}
@@ -177,7 +177,7 @@ func coreRestartCmd() *cobra.Command {
 			"lo arranca directamente — mismo criterio que 'systemctl restart' con el servicio parado.\n\n" +
 			"Si asterion-core corre administrado por systemd/tu gestor de procesos (el caso normal en\n" +
 			"un deploy real), este comando NO lo toca — solo conoce los procesos que arrancó él mismo\n" +
-			"con --background. Reiniciá el servicio real con las herramientas de tu gestor de procesos.",
+			"con --background. Reinicia el servicio real con las herramientas de tu gestor de procesos.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			resolvedAddr := addr
 			if state, alive, _ := localserve.Status(localserve.CoreServeName); alive {

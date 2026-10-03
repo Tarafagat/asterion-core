@@ -43,7 +43,7 @@ func instancesCmd() *cobra.Command {
 				return err
 			}
 			if len(instances) == 0 {
-				fmt.Println("No hay instancias locales todavía. Agregá una con 'asterion instances add'.")
+				fmt.Println("No hay instancias locales todavía. Agrega una con 'asterion instances add'.")
 				return nil
 			}
 			printJSON(instances)

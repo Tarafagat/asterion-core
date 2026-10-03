@@ -87,7 +87,7 @@ func detectServices(s *Scan) {
 
 	for _, c := range s.Services {
 		if c.MapsHost == "" && c.MapsURL == "" {
-			s.warn("detecté un servicio %s (%s) pero no encontré qué variable de entorno usa para conectarse — completá maps_host/maps_port o maps_url a mano en Contract.service(name=%q, ...)",
+			s.warn("detecté un servicio %s (%s) pero no encontré qué variable de entorno usa para conectarse — completa maps_host/maps_port o maps_url a mano en Contract.service(name=%q, ...)",
 				c.Name, c.Kind, c.Name)
 		}
 	}
@@ -184,7 +184,7 @@ func servicesFromCompose(s *Scan) []ServiceCandidate {
 
 	var doc composeFile
 	if yaml.Unmarshal([]byte(text), &doc) != nil {
-		s.warn("encontré %s pero no pude interpretarlo como YAML — revisalo a mano", source)
+		s.warn("encontré %s pero no pude interpretarlo como YAML — revísalo a mano", source)
 		return nil
 	}
 

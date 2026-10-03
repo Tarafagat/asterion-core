@@ -33,7 +33,7 @@ func upgradeCmd() *cobra.Command {
 			"uno con su propio 'replace' en go.mod: en el filesystem es una sola carpeta, se\n" +
 			"actualiza una sola vez.\n\n" +
 			"Por default busca el workspace subiendo desde el directorio actual hasta encontrar\n" +
-			"una carpeta con 'asterion-core' adentro — pasá --dir si corrés esto desde otro lado.\n" +
+			"una carpeta con 'asterion-core' adentro — pasa --dir si corres esto desde otro lado.\n" +
 			"Nunca hace merge ni fuerza nada: un repo con cambios propios sin commitear, o cuya\n" +
 			"rama divergió de la remota, se reporta tal cual lo rechaza git, sin tocarlo.",
 		Args: cobra.MaximumNArgs(1),

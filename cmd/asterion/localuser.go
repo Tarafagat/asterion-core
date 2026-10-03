@@ -113,7 +113,7 @@ func localUserCreateCmd() *cobra.Command {
 				fmt.Printf("  ⚠ %s\n", w)
 			}
 			if privateKeyToShow != "" {
-				fmt.Println("\nClave privada generada — copiala ahora, no se vuelve a mostrar:")
+				fmt.Println("\nClave privada generada — cópiala ahora, no se vuelve a mostrar:")
 				fmt.Println(privateKeyToShow)
 			}
 			return nil

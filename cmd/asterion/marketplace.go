@@ -105,7 +105,7 @@ func marketplaceBuyCmd() *cobra.Command {
 				return nil
 			}
 			initPoint, _ := result["init_point"].(string)
-			fmt.Println("Completá el pago en:")
+			fmt.Println("Completa el pago en:")
 			fmt.Println("  " + initPoint)
 			fmt.Printf("\nUna vez aprobado: asterion marketplace install %s\n", args[0])
 			return nil
@@ -122,7 +122,7 @@ func marketplaceInstallCmd() *cobra.Command {
 		Use:   "install <slug>",
 		Short: "Instala un plugin del marketplace por su slug (resuelve su repo real y delega en 'plugin install')",
 		Long: "Si el plugin es de pago y todavía no lo compraste, corta acá con un mensaje\n" +
-			"claro en vez de fallar más abajo con un error de git confuso — comprálo primero\n" +
+			"claro en vez de fallar más abajo con un error de git confuso — cómpralo primero\n" +
 			"con 'asterion marketplace buy <slug>'.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {

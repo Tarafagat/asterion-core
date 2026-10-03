@@ -41,10 +41,10 @@ func pluginUpdateCmd() *cobra.Command {
 				name = args[0]
 			}
 			if name == "" && !all {
-				return fmt.Errorf("pasá un nombre de plugin, o --all para actualizar todos los instalados (ver 'asterion plugin list')")
+				return fmt.Errorf("pasa un nombre de plugin, o --all para actualizar todos los instalados (ver 'asterion plugin list')")
 			}
 			if name != "" && all {
-				return fmt.Errorf("pasá un nombre o --all, no los dos")
+				return fmt.Errorf("pasa un nombre o --all, no los dos")
 			}
 
 			if all {
@@ -98,7 +98,7 @@ func printUpdateResults(results []plugins.UpdateResult) {
 		}
 	}
 	if anyChanged {
-		fmt.Println("\nAlgún repo trajo código nuevo — recordá recompilar si aplica ('asterion plugin build <name>') y reiniciar el plugin para que tome el cambio.")
+		fmt.Println("\nAlgún repo trajo código nuevo — recuerda recompilar si aplica ('asterion plugin build <name>') y reiniciar el plugin para que tome el cambio.")
 	}
 	if anyErr {
 		fmt.Println("\nAlgún repo no se pudo actualizar — puede tener cambios propios sin commitear, o haber divergido de su rama remota (ver el detalle arriba).")

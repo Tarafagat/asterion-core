@@ -46,7 +46,7 @@ func findCloudflared() (string, error) {
 		return path, nil
 	}
 	return "", fmt.Errorf(
-		"no encontré 'cloudflared' en el PATH — instalalo primero:\n" +
+		"no encontré 'cloudflared' en el PATH — instálalo primero:\n" +
 			"  curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb\n" +
 			"  sudo dpkg -i cloudflared.deb\n" +
 			"(en macOS: brew install cloudflared)",
@@ -272,7 +272,7 @@ func printTunnelStarted(state tunnel.State, exposedSource string) {
 		} else if state.URL != "" {
 			fmt.Printf("✓ Túnel corriendo en segundo plano — %s → %s (pid %d)\n", state.URL, exposed, state.PID)
 		} else {
-			fmt.Printf("✓ Túnel arrancado (pid %d), pero todavía no pude leer la URL del log — revisala con:\n", state.PID)
+			fmt.Printf("✓ Túnel arrancado (pid %d), pero todavía no pude leer la URL del log — revísala con:\n", state.PID)
 			fmt.Printf("  grep trycloudflare %s\n", state.LogPath)
 		}
 	}

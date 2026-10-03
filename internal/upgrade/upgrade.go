@@ -63,7 +63,7 @@ func FindWorkspace(startDir string) (string, error) {
 	}
 	return "", fmt.Errorf(
 		"no encontré ninguna carpeta con 'asterion-core' adentro subiendo desde %s — "+
-			"corré esto desde tu workspace de desarrollo, o pasá --dir",
+			"ejecuta esto desde tu workspace de desarrollo, o pasa --dir",
 		startDir,
 	)
 }

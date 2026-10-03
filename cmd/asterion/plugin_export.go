@@ -249,7 +249,7 @@ func writeBackendEnv(path string, installed plugins.Installed, config map[string
 	var b strings.Builder
 	b.WriteString("# Generado por 'asterion plugin export' — CONTIENE SECRETOS REALES.\n")
 	b.WriteString("# Nunca lo commitees (el .gitignore de este export ya lo excluye). Si este\n")
-	b.WriteString("# archivo se filtra, rotá cualquier secreto que tenga adentro.\n")
+	b.WriteString("# archivo se filtra, rota cualquier secreto que tenga adentro.\n")
 	b.WriteString("#\n")
 	b.WriteString("# Formato .env estándar (KEY=value) — compatible con 'docker run --env-file',\n")
 	b.WriteString("# docker-compose 'env_file:', y la mayoría de librerías de dotenv.\n\n")

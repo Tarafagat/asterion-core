@@ -70,7 +70,7 @@ func localRouteCmd() *cobra.Command {
 			if cfg.ReportLocalServe {
 				fmt.Println("Reportar a Asterion Cloud: SÍ — esta ruta viaja en el próximo heartbeat del agente")
 			} else {
-				fmt.Println("Reportar a Asterion Cloud: NO — activalo con 'asterion local config set report_local_serve true'")
+				fmt.Println("Reportar a Asterion Cloud: NO — actívalo con 'asterion local config set report_local_serve true'")
 			}
 			return nil
 		},

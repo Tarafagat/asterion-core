@@ -84,7 +84,7 @@ func apiToken() (string, error) {
 	}
 	creds, err := cliconfig.LoadCredentials()
 	if err != nil || creds.RefreshToken == "" {
-		return "", fmt.Errorf("no hay sesión guardada, corré 'asterion cloud login' primero")
+		return "", fmt.Errorf("no hay sesión guardada, ejecuta 'asterion cloud login' primero")
 	}
 	if time.Now().Before(creds.ExpiresAt.Add(-1 * time.Minute)) {
 		return creds.AccessToken, nil
@@ -93,7 +93,7 @@ func apiToken() (string, error) {
 	unauth := apiclient.NewUnauthenticated(cfg.APIBaseURL)
 	session, err := unauth.RefreshSession(creds.RefreshToken)
 	if err != nil {
-		return "", fmt.Errorf("la sesión venció y no se pudo renovar, corré 'asterion cloud login' de nuevo: %w", err)
+		return "", fmt.Errorf("la sesión venció y no se pudo renovar, ejecuta 'asterion cloud login' de nuevo: %w", err)
 	}
 	creds.AccessToken = session.AccessToken
 	creds.RefreshToken = session.RefreshToken

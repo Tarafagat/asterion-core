@@ -294,8 +294,8 @@ func localServeCmd() *cobra.Command {
 			"-m venv venv, e instala requirements.txt con el pip de ese venv) — no hace falta prepararlo a\n" +
 			"mano en ningún sistema operativo (Linux/macOS/Windows).\n" +
 			"frontend-core sí necesita estar compilado por separado (pnpm build) — ver asterion-core/README.md.\n\n" +
-			"El login ya no usa Google/Firebase: la primera vez que corrés esto se genera un token\n" +
-			"propio (ver internal/localauth) que se imprime UNA sola vez acá abajo — pegalo en el\n" +
+			"El login ya no usa Google/Firebase: la primera vez que corres esto se genera un token\n" +
+			"propio (ver internal/localauth) que se imprime UNA sola vez acá abajo — pégalo en el\n" +
 			"dashboard para entrar. Si ya existe uno de una corrida anterior, se reusa (no se vuelve a\n" +
 			"mostrar: solo se guarda su hash). Perdiste el token: 'asterion local auth rotate'.\n\n" +
 			"--background lo deja corriendo después de que este comando termine (mismo criterio que\n" +
@@ -309,7 +309,7 @@ func localServeCmd() *cobra.Command {
 
 			if background {
 				if _, alive, statusErr := localserve.Status(localserve.LocalServeName); statusErr == nil && alive {
-					return fmt.Errorf("el dashboard local ya está corriendo en segundo plano — 'asterion local stop' primero si querés reiniciarlo")
+					return fmt.Errorf("el dashboard local ya está corriendo en segundo plano — 'asterion local stop' primero si quieres reiniciarlo")
 				}
 			}
 
@@ -619,7 +619,7 @@ func ensureBackendCoreVenv(backendCoreDir, pythonBin string) (string, error) {
 		pythonBin = defaultPythonBin()
 	}
 	if _, err := exec.LookPath(pythonBin); err != nil {
-		return "", fmt.Errorf("no encontré %q en el PATH para crear el entorno virtual de backend-core — instalá Python 3 o pasá --python con la ruta a tu intérprete", pythonBin)
+		return "", fmt.Errorf("no encontré %q en el PATH para crear el entorno virtual de backend-core — instala Python 3 o pasa --python con la ruta a tu intérprete", pythonBin)
 	}
 
 	fmt.Printf("No encontré backend-core/venv — creándolo con %s...\n", pythonBin)
@@ -640,8 +640,8 @@ func ensureBackendCoreVenv(backendCoreDir, pythonBin string) (string, error) {
 		return "", fmt.Errorf(
 			"no pude instalar las dependencias de backend-core con %s: %w\n\n"+
 				"Si el error de arriba menciona que tu versión de Python es demasiado nueva para alguna "+
-				"dependencia (pydantic-core/PyO3 suele ser la primera en fallar), instalá una versión más "+
-				"estable (ej. 'brew install python@3.13') y reintentá con --python /opt/homebrew/bin/python3.13",
+				"dependencia (pydantic-core/PyO3 suele ser la primera en fallar), instala una versión más "+
+				"estable (ej. 'brew install python@3.13') y reintenta con --python /opt/homebrew/bin/python3.13",
 			pythonBin, err,
 		)
 	}
@@ -716,8 +716,8 @@ func resolveBackendCoreDir(explicit string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf(
-		"no encontré backend-core (probé %v desde el directorio actual) — corré este comando desde "+
-			"la raíz del repo, o pasá --dir /ruta/a/asterion-core/backend-core",
+		"no encontré backend-core (probé %v desde el directorio actual) — ejecuta este comando desde "+
+			"la raíz del repo, o pasa --dir /ruta/a/asterion-core/backend-core",
 		candidates,
 	)
 }

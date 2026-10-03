@@ -41,7 +41,7 @@ func runConfigWizard(name string) error {
 	// explica la forma manual y se sale.
 	if !stdinIsTerminal() {
 		printManualHelp(installed.Name, schema, nil)
-		return fmt.Errorf("no hay una terminal interactiva — usá la forma con clave=valor de arriba")
+		return fmt.Errorf("no hay una terminal interactiva — usa la forma con clave=valor de arriba")
 	}
 
 	current, err := plugins.GetConfigMasked(installed)
@@ -98,7 +98,7 @@ func runConfigWizard(name string) error {
 		default:
 			n, err := strconv.Atoi(choice)
 			if err != nil || n < 1 || n > len(schema) {
-				fmt.Printf("No entendí %q — poné un número entre 1 y %d, o f/t/g/q.\n", choice, len(schema))
+				fmt.Printf("No entendí %q — pon un número entre 1 y %d, o f/t/g/q.\n", choice, len(schema))
 				continue
 			}
 			askField(schema[n-1], current, pending)
@@ -189,7 +189,7 @@ func askField(f apc.ConfigField, current, pending map[string]string) bool {
 
 	switch {
 	case f.IsSecret():
-		fmt.Println("  (secreto: no se va a ver mientras lo escribís, y se guarda cifrado)")
+		fmt.Println("  (secreto: no se va a ver mientras lo escribes, y se guarda cifrado)")
 	case f.Default != "":
 		fmt.Printf("  (default si lo dejás vacío: %s)\n", f.Default)
 	}
@@ -302,10 +302,10 @@ func printNextStep(installed plugins.Installed, schema []apc.ConfigField, curren
 	fmt.Println()
 	if len(missing) > 0 {
 		fmt.Printf("Todavía faltan %d campo(s) obligatorio(s): %s\n", len(missing), strings.Join(missing, ", "))
-		fmt.Printf("Volvé a entrar con: asterion plugin config set %s\n", installed.Name)
+		fmt.Printf("Vuelve a entrar con: asterion plugin config set %s\n", installed.Name)
 		return
 	}
-	fmt.Printf("Ya están todos los obligatorios. Arrancalo con: asterion plugin start %s\n", installed.Name)
+	fmt.Printf("Ya están todos los obligatorios. Arráncalo con: asterion plugin start %s\n", installed.Name)
 }
 
 // shellQuote entrecomilla un valor solo si lo necesita — un comando que
@@ -357,7 +357,7 @@ func stdinIsTerminal() bool {
 func readSecretLine() string {
 	restore, ok := disableEcho()
 	if !ok {
-		fmt.Print("\n  ⚠ (no pude apagar el eco en esta terminal: el valor SE VA A VER mientras lo escribís)\n  = ")
+		fmt.Print("\n  ⚠ (no pude apagar el eco en esta terminal: el valor SE VA A VER mientras lo escribes)\n  = ")
 		return strings.TrimSpace(trimNewline(readLine()))
 	}
 	defer restore()

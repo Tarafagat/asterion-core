@@ -96,7 +96,7 @@ func detectConfig(s *Scan) {
 		// conecte a nada, y alguien podría llenarla pensando que hace
 		// algo. Queda como aviso, no como campo.
 		if strings.EqualFold(p.Key, "PORT") {
-			s.warn("el proyecto declara PORT en %s, pero Asterion ya inyecta el puerto como ASTERION_PLUGIN_PORT — si el código lee process.env.PORT (u os.environ[\"PORT\"]) directamente, hay que ajustarlo para leer ASTERION_PLUGIN_PORT, o remapearla vos mismo antes de arrancar", source)
+			s.warn("el proyecto declara PORT en %s, pero Asterion ya inyecta el puerto como ASTERION_PLUGIN_PORT — si el código lee process.env.PORT (u os.environ[\"PORT\"]) directamente, hay que ajustarlo para leer ASTERION_PLUGIN_PORT, o remapearla a mano antes de arrancar", source)
 			continue
 		}
 		s.Configs = append(s.Configs, ConfigKey{

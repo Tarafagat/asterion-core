@@ -142,7 +142,7 @@ func rebuildSelf(workspaceDir string) string {
 		return ""
 	}
 	if _, err := exec.LookPath("go"); err != nil {
-		return "⚠ Se clonaron repos nuevos, pero no encontré 'go' en el PATH para recompilar — corré 'go install ./cmd/asterion' (o 'make install') a mano en asterion-core."
+		return "⚠ Se clonaron repos nuevos, pero no encontré 'go' en el PATH para recompilar — ejecuta 'go install ./cmd/asterion' (o 'make install') a mano en asterion-core."
 	}
 	cmd := exec.Command("go", "install", "./cmd/asterion")
 	cmd.Dir = coreDir
@@ -150,10 +150,10 @@ func rebuildSelf(workspaceDir string) string {
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		return fmt.Sprintf(
-			"⚠ Se clonaron repos nuevos, pero no pude recompilar 'asterion' automáticamente — corré "+
+			"⚠ Se clonaron repos nuevos, pero no pude recompilar 'asterion' automáticamente — ejecuta "+
 				"'go install ./cmd/asterion' (o 'make install') a mano en asterion-core:\n%s", msg,
 		)
 	}
 	return "✓ 'asterion' recompilado con los módulos nuevos ($GOPATH/bin actualizado — si también usás " +
-		"/usr/local/bin, corré 'make install' o copialo a mano)."
+		"/usr/local/bin, ejecuta 'make install' o cópialo a mano)."
 }

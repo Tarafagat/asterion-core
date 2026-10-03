@@ -37,7 +37,7 @@ func Dump(ctx context.Context, engine string, port int, database, user, password
 	}
 	if _, err := exec.LookPath(binary); err != nil {
 		return "", fmt.Errorf(
-			"no se encontró el binario %q en esta instancia — instalalo (mysql-client/postgresql-client) para poder hacer backups",
+			"no se encontró el binario %q en esta instancia — instálalo (mysql-client/postgresql-client) para poder hacer backups",
 			binary,
 		)
 	}

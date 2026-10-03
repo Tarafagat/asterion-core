@@ -69,7 +69,7 @@ func inspectUFW() FirewallInspection {
 	if needsPrivileges(err, text) {
 		return FirewallInspection{
 			Backend: "ufw", Readable: false,
-			Detail: "ufw necesita privilegios de root para consultar el estado real — corré 'asterion local doctor' con sudo para un chequeo de riesgo real, no asumido",
+			Detail: "ufw necesita privilegios de root para consultar el estado real — ejecuta 'asterion local doctor' con sudo para un chequeo de riesgo real, no asumido",
 		}
 	}
 	if err != nil {
@@ -84,7 +84,7 @@ func inspectNFTables() FirewallInspection {
 	if needsPrivileges(err, text) {
 		return FirewallInspection{
 			Backend: "nftables", Readable: false,
-			Detail: "nftables necesita privilegios de root para listar el ruleset — corré 'asterion local doctor' con sudo",
+			Detail: "nftables necesita privilegios de root para listar el ruleset — ejecuta 'asterion local doctor' con sudo",
 		}
 	}
 	if err != nil {
@@ -99,7 +99,7 @@ func inspectIPTables() FirewallInspection {
 	if needsPrivileges(err, text) {
 		return FirewallInspection{
 			Backend: "iptables", Readable: false,
-			Detail: "iptables necesita privilegios de root para listar reglas — corré 'asterion local doctor' con sudo",
+			Detail: "iptables necesita privilegios de root para listar reglas — ejecuta 'asterion local doctor' con sudo",
 		}
 	}
 	if err != nil {
@@ -140,7 +140,7 @@ func inspectPF() FirewallInspection {
 	if needsPrivileges(err, text) {
 		return FirewallInspection{
 			Backend: "pf", Readable: false,
-			Detail: "pf necesita privilegios de root para leer /dev/pf — corré 'asterion local doctor' con sudo",
+			Detail: "pf necesita privilegios de root para leer /dev/pf — ejecuta 'asterion local doctor' con sudo",
 		}
 	}
 	if err != nil {

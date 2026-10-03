@@ -11,8 +11,8 @@ import (
 )
 
 // importCmd es la puerta de entrada para un proyecto que YA EXISTE y no
-// sabe nada de Asterion: en vez de "reescribí tu infraestructura", el
-// camino es "corré esto y mirá qué detectó". Inspecciona lo que el
+// sabe nada de Asterion: en vez de "reescribe tu infraestructura", el
+// camino es "ejecuta esto y mira qué detectó". Inspecciona lo que el
 // proyecto ya tiene (package.json, requirements.txt, pyproject.toml,
 // Dockerfile, docker-compose.yml, .env.example, prisma/schema.prisma,
 // go.mod, Cargo.toml) y escribe un app.asterion de partida — nunca un
@@ -69,7 +69,7 @@ func runImport(dir, out string, force bool) error {
 
 	if !force {
 		if _, err := os.Stat(out); err == nil {
-			return fmt.Errorf("%q ya existe — usá --force para sobrescribirlo, o --out para elegir otro nombre", out)
+			return fmt.Errorf("%q ya existe — usa --force para sobrescribirlo, o --out para elegir otro nombre", out)
 		}
 	}
 
@@ -134,12 +134,12 @@ func printImportReport(dir, out string, s *importer.Scan) {
 	fmt.Printf("  fuente editable; 'from-asterion' lo recompila cada vez, nunca se edita el\n")
 	fmt.Printf("  plugin.yaml generado a mano).\n\n")
 	fmt.Printf("Pasos siguientes:\n")
-	fmt.Printf("  1. Revisá %s y completá lo marcado con ⚠.\n", out)
+	fmt.Printf("  1. Revisa %s y completa lo marcado con ⚠.\n", out)
 	fmt.Printf("  2. asterion plugin from-asterion %s --out .   # genera plugin.yaml acá mismo\n", out)
 	fmt.Printf("  3. asterion plugin validate .                            # confirma que cumple el contrato\n")
 	fmt.Printf("  4. asterion plugin install . --link                      # probarlo local, sin publicar nada\n")
-	fmt.Printf("\nPara poder instalarlo en otra máquina (o compartirlo), subí esta carpeta a un\n")
-	fmt.Printf("repo git propio y en el otro lado corré 'asterion plugin install <url-del-repo>'\n")
+	fmt.Printf("\nPara poder instalarlo en otra máquina (o compartirlo), sube esta carpeta a un\n")
+	fmt.Printf("repo git propio y en el otro lado ejecuta 'asterion plugin install <url-del-repo>'\n")
 	fmt.Printf("— no hace falta ningún paso de \"publicar\" especial de Asterion, un plugin ES\n")
 	fmt.Printf("cualquier repo con un plugin.yaml válido en la raíz.\n")
 }

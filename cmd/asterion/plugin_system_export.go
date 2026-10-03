@@ -34,7 +34,7 @@ func pluginSystemExportCmd() *cobra.Command {
 			"Los System.wire con field=\"port\" se resuelven contra puertos FIJOS asignados acá\n" +
 			"(8080, 8081, ... en el orden del archivo) en vez del puerto efímero de desarrollo —\n" +
 			"ese no va a existir en el destino. Se asume que los servicios se despliegan juntos,\n" +
-			"en el mismo host — editá el .env_asterion_produced de nivel sistema a mano si el\n" +
+			"en el mismo host — edita el .env_asterion_produced de nivel sistema a mano si el\n" +
 			"destino real es otro (hosts separados, nombres de servicio de un docker-compose,\n" +
 			"etc.).",
 		Args: cobra.ExactArgs(1),
@@ -248,13 +248,13 @@ func writeSystemCombinedEnv(outAbs string, pluginDecls []systemspec.PluginDecl, 
 	b.WriteString("#\n")
 	b.WriteString("# Este archivo es solo de referencia/edición — cada servicio, al correr, usa\n")
 	b.WriteString("# el .env_asterion_produced DENTRO de su propia subcarpeta (<nombre>/), no\n")
-	b.WriteString("# este. Si editás un valor acá, actualizá también el de la subcarpeta\n")
+	b.WriteString("# este. Si editás un valor acá, actualiza también el de la subcarpeta\n")
 	b.WriteString("# correspondiente — este archivo no se vuelve a leer solo.\n")
 	b.WriteString("#\n")
 	b.WriteString("# Los puertos de abajo son FIJOS, asignados en este export (8080, 8081, ...) —\n")
 	b.WriteString("# asumen que todos los servicios corren juntos, en el mismo host. Si el\n")
 	b.WriteString("# destino real es otro (hosts separados, nombres de servicio de un\n")
-	b.WriteString("# docker-compose), editá los .env_asterion_produced de cada subcarpeta a mano.\n\n")
+	b.WriteString("# docker-compose), edita los .env_asterion_produced de cada subcarpeta a mano.\n\n")
 
 	for _, decl := range pluginDecls {
 		realName := dslNameToReal[decl.Name]

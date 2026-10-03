@@ -73,7 +73,7 @@ func checkCommittedSecrets(installed plugins.Installed) []Check {
 		return []Check{{Section: "Security", Name: "Secretos", Severity: OK, Detail: "ningún .env trackeado por git"}}
 	}
 	return []Check{{Section: "Security", Name: "Secretos", Severity: Fail,
-		Detail: fmt.Sprintf("commiteado en el repo: %s — sacalo del tracking ('git rm --cached %s') y rotá lo que tuviera adentro, ya viajó al historial", strings.Join(found, ", "), found[0])}}
+		Detail: fmt.Sprintf("commiteado en el repo: %s — sácalo del tracking ('git rm --cached %s') y rota lo que tuviera adentro, ya viajó al historial", strings.Join(found, ", "), found[0])}}
 }
 
 // checkDeclaredFilesystem y la red son DECLARACIONES del manifiesto, nunca
@@ -161,7 +161,7 @@ func checkContainerSafety(ctx context.Context, installed plugins.Installed) []Ch
 		}
 		if privileged {
 			return []Check{{Section: "Security", Name: "Contenedores", Severity: Fail,
-				Detail: fmt.Sprintf("%q corre --privileged — Asterion nunca crea uno así; si lo tocaron a mano, recreálo con 'plugin services up --create'", name)}}
+				Detail: fmt.Sprintf("%q corre --privileged — Asterion nunca crea uno así; si lo tocaron a mano, recréalo con 'plugin services up --create'", name)}}
 		}
 		if hostIP != "" && hostIP != "127.0.0.1" {
 			return []Check{{Section: "Security", Name: "Contenedores", Severity: Fail,

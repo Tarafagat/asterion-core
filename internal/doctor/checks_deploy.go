@@ -9,7 +9,7 @@ import (
 )
 
 // credentialProbe es una forma estándar de que un proveedor avise "ya
-// tenés credenciales configuradas" — la variable de entorno que su propio
+// tienes credenciales configuradas" — la variable de entorno que su propio
 // SDK/CLI lee, o el archivo que su CLI oficial deja tras un login. Mirar
 // estos lugares es exactamente lo que haría ese CLI si lo corrieras.
 type credentialProbe struct {

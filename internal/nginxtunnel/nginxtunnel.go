@@ -107,7 +107,7 @@ func Start(spec Spec) (tunnel.State, error) {
 			sitesAvailableDir, sitesEnabledDir,
 		)
 	}
-	nginxBin, err := findBinary("nginx", "instalalo con tu gestor de paquetes (ej. 'apt install nginx')")
+	nginxBin, err := findBinary("nginx", "instálalo con tu gestor de paquetes (ej. 'apt install nginx')")
 	if err != nil {
 		return tunnel.State{}, err
 	}
@@ -145,7 +145,7 @@ func Start(spec Spec) (tunnel.State, error) {
 
 	url := "http://" + spec.Domain
 	if spec.Email != "" {
-		certbotBin, err := findBinary("certbot", "instalalo con tu gestor de paquetes (ej. 'apt install certbot python3-certbot-nginx')")
+		certbotBin, err := findBinary("certbot", "instálalo con tu gestor de paquetes (ej. 'apt install certbot python3-certbot-nginx')")
 		if err != nil {
 			return tunnel.State{}, fmt.Errorf("nginx quedó publicado en HTTP (%s) pero no pude activar TLS: %w", url, err)
 		}
@@ -155,7 +155,7 @@ func Start(spec Spec) (tunnel.State, error) {
 		).CombinedOutput()
 		if err != nil {
 			return tunnel.State{}, fmt.Errorf(
-				"nginx quedó publicado en HTTP (%s) pero certbot falló — revisá que el dominio ya apunte de verdad a esta máquina y que el puerto 80 sea alcanzable desde internet:\n%s",
+				"nginx quedó publicado en HTTP (%s) pero certbot falló — revisa que el dominio ya apunte de verdad a esta máquina y que el puerto 80 sea alcanzable desde internet:\n%s",
 				url, strings.TrimSpace(string(out)),
 			)
 		}

@@ -46,8 +46,8 @@ func servicesListCmd() *cobra.Command {
 			"fuerza a una de las otras tres por descarte). --system/--database/--apis/--other\n" +
 			"filtran la lista a esas categorías — combinables (ej. --system --database muestra\n" +
 			"las dos), no tiene sentido combinarlos con un nombre puntual.\n\n" +
-			"Solo lectura, a propósito: no hay 'restart'/'stop'/'start' acá — si ya tenés acceso\n" +
-			"a esta terminal, usá el comando nativo del SO (systemctl/launchctl/Restart-Service)\n" +
+			"Solo lectura, a propósito: no hay 'restart'/'stop'/'start' acá — si ya tienes acceso\n" +
+			"a esta terminal, usa el comando nativo del SO (systemctl/launchctl/Restart-Service)\n" +
 			"directo, es exactamente lo mismo sin una capa intermedia. El control REMOTO (desde\n" +
 			"el dashboard de Asterion Cloud, gateado por permisos y auditado) vive en la pestaña\n" +
 			"'Servicios del sistema' de cada instancia — ver 'asterion agent\n" +

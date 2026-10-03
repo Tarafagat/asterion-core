@@ -43,7 +43,7 @@ func Build(name string) (string, error) {
 	default:
 		return "", fmt.Errorf(
 			"no sé cómo preparar un plugin de lenguaje %q — hoy 'asterion plugin build' solo soporta "+
-				"'go' y 'python' (declarado en plugin.yaml -> language.name); compilalo a mano según las "+
+				"'go' y 'python' (declarado en plugin.yaml -> language.name); compílalo a mano según las "+
 				"instrucciones del propio plugin", langName,
 		)
 	}
@@ -215,7 +215,7 @@ func buildFrontend(installed Installed, log *strings.Builder) error {
 	if info, statErr := os.Stat(filepath.Join(frontendDir, "package.json")); statErr == nil && !info.IsDir() {
 		if _, err := exec.LookPath("pnpm"); err != nil {
 			fmt.Fprintf(log, "\nEste plugin tiene un frontend propio (frontend/package.json) pero no "+
-				"encontré 'pnpm' en el PATH — instalalo y corré 'asterion plugin build %s' de nuevo para "+
+				"encontré 'pnpm' en el PATH — instálalo y ejecuta 'asterion plugin build %s' de nuevo para "+
 				"compilarlo también.\n", installed.Name)
 			return nil
 		}

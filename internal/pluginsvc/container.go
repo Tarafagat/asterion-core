@@ -108,7 +108,7 @@ func DockerAvailable() bool { return DockerUnavailableReason() == "" }
 // no esté el binario (hay que instalarlo) y que esté pero el daemon no
 // conteste (está instalado y apagado, o el contexto activo apunta a un
 // socket que no existe — típico con Docker Desktop cerrado, o con colima o
-// podman, donde el contexto vive en el HOME del usuario). Decir "instalalo"
+// podman, donde el contexto vive en el HOME del usuario). Decir "instálalo"
 // cuando el docker está instalado manda a arreglar lo que no está roto.
 func DockerUnavailableReason() string {
 	if _, err := exec.LookPath("docker"); err != nil {
@@ -120,7 +120,7 @@ func DockerUnavailableReason() string {
 	if err == nil {
 		return ""
 	}
-	return fmt.Sprintf("hay un 'docker' instalado pero su daemon no responde (%s) — arrancalo, o revisá que el contexto activo ('docker context ls') apunte a un socket que exista",
+	return fmt.Sprintf("hay un 'docker' instalado pero su daemon no responde (%s) — arráncalo, o revisa que el contexto activo ('docker context ls') apunte a un socket que exista",
 		firstLine(string(out), err))
 }
 

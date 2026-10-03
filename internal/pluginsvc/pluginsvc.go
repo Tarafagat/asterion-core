@@ -8,7 +8,7 @@
 //
 //  1. DETECTAR: ¿ya hay un motor de ese tipo funcionando y alcanzable?
 //     Si la config del plugin ya apunta a uno que responde, no se toca
-//     nada — "si ya hay una que funcione, usala".
+//     nada — "si ya hay una que funcione, úsala".
 //  2. CONFIGURAR DENTRO de lo que existe: crear la base y el usuario que
 //     falten, con una contraseña generada, y volcar la conexión.
 //  3. Recién si NO hay motor, y SOLO si se pide explícitamente, levantar
@@ -270,7 +270,7 @@ type ProvisionOptions struct {
 func Provision(ctx context.Context, spec apc.ServiceSpec, st Status, opts ProvisionOptions) (*Resolution, error) {
 	admin, existingPassword := opts.Admin, opts.ExistingPassword
 	if !st.Reachable {
-		return nil, fmt.Errorf("no hay ningún %s respondiendo en %s:%d — configuralo a mano, apuntalo a uno remoto, o pedí explícitamente que se levante uno",
+		return nil, fmt.Errorf("no hay ningún %s respondiendo en %s:%d — configúralo a mano, apúntalo a uno remoto, o pide explícitamente que se levante uno",
 			spec.Kind, st.Host, st.Port)
 	}
 	// Cómo se le habla al motor. Si el contenedor es de Asterion, se usa el
@@ -280,7 +280,7 @@ func Provision(ctx context.Context, spec apc.ServiceSpec, st Status, opts Provis
 	// un motor que Asterion no levantó.
 	r := runnerFor(st)
 	if st.Container == "" && cliFor(spec.Kind) != "" && !st.CLIAvailable {
-		return nil, fmt.Errorf("falta %q en el PATH — es con lo que Asterion le habla a un %s que no levantó él; instalalo, o configurá este servicio a mano con 'asterion plugin services connect'", cliFor(spec.Kind), spec.Kind)
+		return nil, fmt.Errorf("falta %q en el PATH — es con lo que Asterion le habla a un %s que no levantó él; instálalo, o configura este servicio a mano con 'asterion plugin services connect'", cliFor(spec.Kind), spec.Kind)
 	}
 
 	// Lo que se vuelca a la config es SIEMPRE la dirección del host: es por

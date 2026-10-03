@@ -92,7 +92,7 @@ func adHocSpec(kind, name string) (apc.ServiceSpec, error) {
 func toolRunService() Tool {
 	return Tool{
 		Name:        "run_service",
-		Description: "Detecta si ya hay un motor (postgres/mysql/mariadb/redis) alcanzable en esta máquina — SOLO detecta, nunca crea nada. Si no hay nada, usá create_environment.",
+		Description: "Detecta si ya hay un motor (postgres/mysql/mariadb/redis) alcanzable en esta máquina — SOLO detecta, nunca crea nada. Si no hay nada, usa create_environment.",
 		InputSchema: serviceKindSchema(),
 		Handler: func(ctx context.Context, args map[string]any) Result {
 			spec, err := adHocSpec(argString(args, "kind", ""), argString(args, "name", ""))
@@ -108,7 +108,7 @@ func toolRunService() Tool {
 				return ok(fmt.Sprintf("No hay ningún %s alcanzable en %s:%d ahora mismo.\nUsá create_environment si necesitás que se levante uno.",
 					spec.Kind, st.Host, st.Port))
 			}
-			return ok(fmt.Sprintf("Hay un %s respondiendo en %s:%d.\nPara usarlo con credenciales propias (no de administrador), llamá a create_environment — detecta esto mismo y, si hace falta, asegura una base y un usuario dedicados ahí dentro.",
+			return ok(fmt.Sprintf("Hay un %s respondiendo en %s:%d.\nPara usarlo con credenciales propias (no de administrador), llama a create_environment — detecta esto mismo y, si hace falta, asegura una base y un usuario dedicados ahí dentro.",
 				spec.Kind, st.Host, st.Port))
 		},
 	}
@@ -245,7 +245,7 @@ func toolRequestCapability(tools map[string]Tool) Tool {
 			case "deploy":
 				delegate = "deploy_preview"
 			default:
-				return fail(fmt.Sprintf("capability %q no reconocida — usá database, cache, logs, tests o deploy", cap))
+				return fail(fmt.Sprintf("capability %q no reconocida — usa database, cache, logs, tests o deploy", cap))
 			}
 			t, ok := tools[delegate]
 			if !ok {

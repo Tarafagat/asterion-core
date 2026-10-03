@@ -160,7 +160,7 @@ func Verify(token string) (bool, error) {
 // plano. path es la ruta real (ver Path()), no una asumida.
 func FormatFirstRun(token, path string) string {
 	return fmt.Sprintf(
-		"Token de acceso generado: %s\nGuardado (hasheado) en %s — este token no se vuelve a mostrar, guardalo ahora.\nPegalo en el dashboard para entrar. Si lo perdés: 'asterion local auth rotate'.",
+		"Token de acceso generado: %s\nGuardado (hasheado) en %s — este token no se vuelve a mostrar, guárdalo ahora.\nPegalo en el dashboard para entrar. Si lo pierdes: 'asterion local auth rotate'.",
 		token, path,
 	)
 }

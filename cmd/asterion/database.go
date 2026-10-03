@@ -34,7 +34,7 @@ func databaseBackupCmd() *cobra.Command {
 		Long: "No espera al próximo heartbeat (hasta ~30s) — hace el dump y lo sube ya\n" +
 			"mismo, usando la misma clave de agente que 'asterion agent-run' ya tiene\n" +
 			"guardada para esta máquina.\n\n" +
-			"Opera sobre una conexión que Cloud YA tiene registrada (creála primero\n" +
+			"Opera sobre una conexión que Cloud YA tiene registrada (créala primero\n" +
 			"desde el panel del proyecto) — deliberadamente NO acepta usuario/\n" +
 			"contraseña como argumentos: una contraseña cruda en la línea de comandos\n" +
 			"queda en el historial de bash y es visible para cualquier otro usuario de\n" +

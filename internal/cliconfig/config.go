@@ -81,7 +81,7 @@ func Save(cfg Config) error {
 }
 
 // LoadCredentials lee la sesión guardada. Devuelve error si no hay ninguna
-// (el llamador debe interpretarlo como "corré 'asterion cloud login'").
+// (el llamador debe interpretarlo como "ejecuta 'asterion cloud login'").
 func LoadCredentials() (Credentials, error) {
 	var creds Credentials
 	d, err := dir()

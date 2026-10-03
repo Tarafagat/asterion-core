@@ -321,7 +321,7 @@ func graphBotRunCmd() *cobra.Command {
 		Use:   "run <archivo.asterion>",
 		Short: "Abre una sesión de terminal contra un AGCA.bot(...) declarado — una línea por goal",
 		Long: "Construye la inteligencia del bot y abre un loop de terminal: cada línea que\n" +
-			"escribís se trata como un goal, corre un ciclo cognitivo completo (ver 'graph run')\n" +
+			"escribes se trata como un goal, corre un ciclo cognitivo completo (ver 'graph run')\n" +
 			"y se imprime el resultado — Ctrl+D o 'exit' para salir. El bot en sí no piensa: es\n" +
 			"la interfaz (ver § 16 de 'Camino a la AGI', 'un bot no debe ser una inteligencia\n" +
 			"separada por defecto') hacia la misma Intelligence que 'graph run' usa.",
@@ -370,12 +370,12 @@ func findBotDecl(rt *agcaruntime.Runtime, name string) (agcaspec.BotDecl, error)
 		for i, b := range rt.Bots {
 			names[i] = b.VarName
 		}
-		return agcaspec.BotDecl{}, fmt.Errorf("graph bot run: hay %d bots (%v) — indicá cuál con --bot", len(rt.Bots), names)
+		return agcaspec.BotDecl{}, fmt.Errorf("graph bot run: hay %d bots (%v) — indica cuál con --bot", len(rt.Bots), names)
 	}
 }
 
 func runBotTerminal(b *agcabot.Bot) error {
-	fmt.Printf("Bot %q (interface=%s) — escribí un goal por línea, Ctrl+D o 'exit' para salir.\n", b.Decl.Name, b.Decl.Interface)
+	fmt.Printf("Bot %q (interface=%s) — escribe un goal por línea, Ctrl+D o 'exit' para salir.\n", b.Decl.Name, b.Decl.Interface)
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("> ")

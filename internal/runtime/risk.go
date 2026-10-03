@@ -62,7 +62,7 @@ func AssessSSHRisk(ssh SSHInfo, fw FirewallInspection) SSHRiskAssessment {
 			return SSHRiskAssessment{
 				Level: level,
 				Reason: fmt.Sprintf(
-					"ufw está detectado pero INACTIVO — SSH en %s no está siendo filtrado hoy, así que no hay riesgo inmediato. El riesgo aparece si se habilita ufw con política 'deny' por defecto sin agregar antes una regla ALLOW explícita para %s — eso cortaría el acceso administrativo. Usá 'asterion firewall plan' antes de habilitarlo.",
+					"ufw está detectado pero INACTIVO — SSH en %s no está siendo filtrado hoy, así que no hay riesgo inmediato. El riesgo aparece si se habilita ufw con política 'deny' por defecto sin agregar antes una regla ALLOW explícita para %s — eso cortaría el acceso administrativo. Usa 'asterion firewall plan' antes de habilitarlo.",
 					portsLabel, portsLabel,
 				),
 			}
@@ -94,7 +94,7 @@ func AssessSSHRisk(ssh SSHInfo, fw FirewallInspection) SSHRiskAssessment {
 	return SSHRiskAssessment{
 		Level: RiskUnknown,
 		Reason: fmt.Sprintf(
-			"El firewall (%s) se pudo leer, pero Asterion todavía no interpreta automáticamente sus reglas para confirmar un ALLOW de SSH en %s — revisá 'raw_rules' a mano. Esta capacidad está declarada UNSUPPORTED, no simulada.",
+			"El firewall (%s) se pudo leer, pero Asterion todavía no interpreta automáticamente sus reglas para confirmar un ALLOW de SSH en %s — revisa 'raw_rules' a mano. Esta capacidad está declarada UNSUPPORTED, no simulada.",
 			fw.Backend, portsLabel,
 		),
 	}

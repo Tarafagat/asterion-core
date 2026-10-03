@@ -310,7 +310,7 @@ func resolveWireValue(pluginName, field string) (string, error) {
 // de un vendor de JDK sin un default obvio. Pedirlos en requires=[...]
 // da un error claro en vez de fingir que se resolvieron.
 var unsandboxableTools = map[string]string{
-	"java":  "no hay un vendor de JDK obvio para descargar sandboxed sin pedirte elegir uno — instalalo vos y declará solo \"java\" para que Asterion VERIFIQUE que está (no lo descarga)",
+	"java":  "no hay un vendor de JDK obvio para descargar sandboxed sin pedirte elegir uno — instálalo manualmente y declara solo \"java\" para que Asterion VERIFIQUE que está (no lo descarga)",
 	"c":     "un compilador de C depende de headers/libs del sistema operativo — no es algo que se pueda bajar como tarball autocontenido",
 	"gcc":   "un compilador de C depende de headers/libs del sistema operativo — no es algo que se pueda bajar como tarball autocontenido",
 	"clang": "un compilador de C depende de headers/libs del sistema operativo — no es algo que se pueda bajar como tarball autocontenido",

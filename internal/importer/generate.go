@@ -18,7 +18,7 @@ func Generate(s *Scan) string {
 
 	w("language \"0.1\"\n\n")
 	w("# Generado por 'asterion import %s' a partir de lo que ya tenía el proyecto.\n", relOrDot(s.Dir))
-	w("# Revisá cada comentario antes de compilarlo: marca qué se detectó con confianza\n")
+	w("# Revisa cada comentario antes de compilarlo: marca qué se detectó con confianza\n")
 	w("# y qué es una convención o quedó sin resolver.\n")
 	w("#   asterion plugin from-asterion app.asterion --out .\n")
 	w("#   asterion plugin validate .\n\n")
