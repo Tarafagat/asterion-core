@@ -9,6 +9,59 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
 ## [Unreleased]
 
 ### Added
+- **`asterion doctor [plugin]` / `asterion import [dir]` / `asterion mcp
+  serve`|`init`** — tres comandos nuevos, pensados para que sean un solo
+  flujo: `import` convierte un proyecto que no sabe nada de Asterion en
+  un `app.asterion` de partida; `doctor` diagnostica un plugin ya
+  instalado (salud real vía HTTP, sus servicios externos vía
+  `pluginsvc.Detect`, coincidencia de versión del lenguaje, secretos
+  commiteados por git, y una distinción explícita entre lo que Asterion
+  **fuerza** — un contenedor propio nunca `--privileged`, verificado
+  contra `docker inspect` — y lo que el plugin solo **declara**, nunca
+  confundido con lo anterior); `mcp serve` expone 7 herramientas por
+  JSON-RPC 2.0/stdio (`inspect_project`, `run_service`,
+  `create_environment`, `request_capability`, `read_logs`, `run_tests`,
+  `deploy_preview`) para que Claude Code/Cursor/Copilot/Gemini CLI le
+  pidan infraestructura real a Asterion sin acceso de root al host —
+  `mcp init` declara el servidor en `.mcp.json` (mismo formato que ya usa
+  Claude Code) y escribe `ASTERION.md`. Cero dependencias Go nuevas
+  (JSON-RPC a mano sobre `encoding/json`, sin SDK de MCP).
+  Verificado en vivo, con bugs reales encontrados y corregidos en el
+  proceso: el resumen de una línea de `doctor` mostraba el primer `Warn`
+  de la lista en vez del peor (`Fail`) cuando los dos coexistían; el
+  generador de `import` excluía de `config_schema` las claves que un
+  `Contract.service` mapeaba, pensando que eran redundantes —
+  `apc.Manifest.Validate()` exige exactamente lo contrario, y el
+  `app.asterion` generado no compilaba; `create_environment` quedaba
+  trabado si el puerto estándar de un motor ya estaba ocupado por algo
+  no utilizable (un Redis ajeno pidiendo una contraseña que no se tiene)
+  en vez de caer a levantar uno propio en un puerto libre.
+- **`asterion plugin services [up|connect] <plugin>`** — resuelve lo que
+  un plugin declara con `Contract.service(...)` (una base de datos, un
+  Redis — ver `apc.ServiceSpec`), siguiendo siempre el mismo orden:
+  detectar si el motor ya existe y responde; configurar DENTRO de eso
+  (crear la base/usuario que falten, con una contraseña generada, nunca
+  rotando la de un usuario ya existente sin pedirlo con
+  `--rotate-password`); y recién levantar un contenedor si se pide
+  explícito con `--create` — nunca por su cuenta. `plugin services
+  connect` es el modo manual para apuntar a un servicio remoto/
+  administrado, con validación de forma (puerto numérico, host sin
+  esquema de URL pegado) antes de guardar nada. Nuevo paquete
+  `internal/pluginsvc`: habla con cada motor por su CLI
+  (`psql`/`mysql`/`redis-cli`), mismo criterio que `internal/dbbackup`
+  con `pg_dump`/`mysqldump`; si el contenedor es de Asterion, usa el
+  cliente que ya viene adentro vía `docker exec` (funciona en una máquina
+  sin `psql` instalado, el caso normal en macOS); toda credencial se
+  verifica con un login real antes de guardarse en la config cifrada del
+  plugin — si no entra, no se guarda. Verificado en vivo contra Postgres/
+  MySQL/Redis reales (y en contenedor, vía Docker), con varios bugs
+  reales corregidos en el camino: un usuario ya existente en el motor se
+  re-generaba su contraseña y se guardaba sin aplicarla (quedaba una
+  credencial que no servía, reportada como éxito); `NOAUTH` de Redis se
+  reportaba como "¿esto es un Redis?" siendo la prueba de lo contrario;
+  `WaitReady` daba un falso positivo por TCP mientras el proxy de
+  puertos de Docker aceptaba la conexión antes de que el motor adentro
+  escuchara.
 - **`GCP.CreateInstance` real — el primer método `Create*` de todo el
   sistema de adapters que crea infraestructura de verdad** (antes solo
   `ListInstances`/`GetCostReport` de GCP/Vercel llamaban a una API real,
