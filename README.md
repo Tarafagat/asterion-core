@@ -946,6 +946,144 @@ stdout+stderr — no hace falta que el plugin haga nada especial para que
 funcione, pero tampoco muestra más de lo que el plugin ya loguea por su
 cuenta.
 
+### `asterion doctor` — diagnóstico de un plugin (salud, entorno, seguridad, deployment)
+
+```bash
+asterion doctor               # Environment/AI/Deployment de esta máquina + una línea por plugin instalado
+asterion doctor fuelity_bot    # reporte completo de ESE plugin
+asterion doctor fuelity_bot --json
+```
+
+No es lo mismo que `asterion local doctor` (ver § Runtime Engine más
+arriba): ese mira ESTA MÁQUINA como host (puerto expuesto, systemd,
+reverse proxy). Este mira un PLUGIN: su proceso, los servicios externos
+que declara (reusando `plugin services` por dentro), y si su lenguaje
+coincide con lo que hay instalado acá.
+
+Secciones, y qué significa cada una de verdad:
+
+- **Health.** El proceso está corriendo (reconciliado contra el pid real,
+  mismo chequeo que `plugin status`) y, si declara `health_path`, un GET
+  real contra él — no "el proceso existe", sino "contestó 200". Por cada
+  servicio declarado (`Contract.service(...)`), el mismo `pluginsvc.Detect`
+  que usa `plugin services`, y si ya está listo, la versión real del motor
+  (`SHOW server_version`/`SELECT VERSION()`/`INFO server`, con la
+  credencial YA resuelta del plugin — nunca una de administrador).
+- **Environment.** El `language.version` declarado contra lo que esta
+  máquina realmente tiene instalado (`go version`/`python3 --version`) —
+  un desajuste de versión mayor es la causa más común de "en mi máquina
+  compilaba".
+- **Security.** Dos clases de hallazgo que nunca se confunden en el texto:
+  lo que Asterion mismo **fuerza** (un contenedor que levantó él nunca es
+  `--privileged` y publica solo en `127.0.0.1` — verificado en vivo contra
+  `docker inspect`, no asumido) se dice con un "✓" tranquilo; lo que el
+  `plugin.yaml` **declara** (`permissions.filesystem`/`permissions.network`)
+  siempre se rotula "declarado" — nada en Asterion sandboxea el proceso de
+  un plugin a nivel de SO, así que mostrarlo como "✓ restringido" sería
+  prometer una garantía que no existe. Además: un `.env` (o variante)
+  **trackeado por git** en el repo del plugin es un `fail` con el comando
+  exacto para sacarlo (`git rm --cached`) — el riesgo real y nombrable es
+  que ya viajó al historial, no que exista en el disco.
+- **Networking.** Los hosts declarados en `permissions.network`, con el
+  mismo cuidado de lenguaje: "declarado solo hacia: x, y", nunca "tráfico
+  restringido a x, y".
+- **AI.** Si hay un `claude` en el PATH (o una carpeta `.claude/`), cuántos
+  servidores MCP hay declarados en un `.mcp.json`/`.cursor/mcp.json`
+  /`.vscode/mcp.json` del directorio actual, y si hay algún `.asterion` ahí
+  con `AGCA.*`/`Tool.*` (ver `asterion graph`) — "disabled" si no hay
+  ninguno, no es un interruptor global, es por archivo.
+- **Deployment.** `Local` (siempre), `Docker` (mismo diagnóstico que
+  `plugin services` — distingue "no instalado" de "instalado pero el
+  daemon no responde"), y por cada proveedor de nube (AWS/GCP/OCI/
+  Azure/Vercel) si hay credenciales donde ESE proveedor las busca (la
+  variable de entorno o el archivo que su propio CLI dejaría tras un
+  login) — nunca si el despliegue en sí va a funcionar, eso solo se sabe
+  al intentarlo.
+
+### `asterion import` — convertir un proyecto que no sabe nada de Asterion
+
+La puerta de entrada para adoptar Asterion sin reescribir nada: en vez de
+"migrá tu infraestructura", el camino es "corré esto y mirá qué detectó".
+
+```bash
+asterion import .                                   # escribe ./app.asterion
+asterion plugin from-asterion app.asterion --out .  # lo compila a un plugin.yaml real
+asterion plugin validate .                          # confirma que cumple el contrato
+asterion plugin install . --link                    # probarlo local
+```
+
+Lee lo que el proyecto YA tiene — nunca reescribe nada de él — y entrega
+un `.asterion` (la misma fuente editable de siempre, nunca un
+`plugin.yaml` generado a mano) con lo que pudo inferir:
+
+| De dónde sale | Qué infiere |
+|---|---|
+| `go.mod` / `requirements.txt`, `pyproject.toml` / `package.json` / `Cargo.toml` | lenguaje (y versión, si está declarada) |
+| `Dockerfile` (`CMD`/`ENTRYPOINT`, `EXPOSE`) | comando de arranque y puerto — la señal de más confianza, es lo que YA usa para correr en producción |
+| `Procfile` (`web: ...`) | comando de arranque, si no hay Dockerfile |
+| `package.json` (`scripts.start`) | comando de arranque, como último recurso antes de una convención |
+| `.env.example`/`.env.sample`/`.env.template` | cada variable como `Contract.config(...)` — `type="secret"` por el NOMBRE (`PASSWORD`, `TOKEN`, `API_KEY`...), `required` según si el ejemplo la deja vacía |
+| `docker-compose.yml` | la imagen de cada servicio (`postgres:16`, `redis:7`...) como `Contract.service(...)` |
+| `prisma/schema.prisma` | el `datasource` (`provider`+`url = env("...")`) como otro `Contract.service(...)` |
+| `requirements.txt`/`package.json` (psycopg2, pymysql, ioredis...) | señal débil, solo para desempatar el motor de un `DATABASE_URL` genérico que no trae esquema |
+
+Nada se completa adivinando en silencio: cada línea generada lleva un
+comentario que dice si salió de una fuente directa ("detectado en
+Dockerfile") o es una convención razonable ("adivinado: convención de
+`go build`"), y lo que no se pudo inferir en absoluto queda como un
+placeholder con `⚠` — nunca un dato inventado que parezca confiable. Para
+instalarlo en otra máquina (o compartirlo), esa carpeta se sube a un repo
+git propio — un plugin de Asterion ES cualquier repo con un `plugin.yaml`
+válido en la raíz, no hace falta ningún paso de "publicar" especial.
+
+### `asterion mcp` — Asterion como servidor MCP para cualquier agente de código
+
+No compite con Claude Code, Cursor, Copilot o Gemini CLI — es para que
+cualquiera de ellos le pida infraestructura real a Asterion sin saber
+hablar con Docker, `psql` o un SDK de nube, y sin que el agente necesite
+acceso de root a la máquina.
+
+```bash
+asterion mcp init    # declara el servidor en .mcp.json de este proyecto + escribe ASTERION.md
+asterion mcp serve   # lo que .mcp.json invoca — JSON-RPC 2.0 por stdin/stdout, no es para correr a mano
+```
+
+`mcp init` es no destructivo: si `.mcp.json` ya existe, le agrega la
+entrada `"asterion"` sin tocar el resto; si `CLAUDE.md` existe en el
+directorio, le suma una línea apuntando a `ASTERION.md` (una sola vez,
+nunca duplicada); `ASTERION.md` no lo crea si ya existe, salvo `--force`.
+
+Siete herramientas, todas backed por código real (nada queda como un
+stub que promete algo que no hace):
+
+- **inspect_project** — de solo lectura. Si el directorio ya es un plugin
+  (`plugin.yaml`), devuelve lo que declara y, si está instalado, el mismo
+  diagnóstico que `asterion doctor`. Si no, el mismo escaneo que
+  `asterion import` (sin escribir nada).
+- **run_service** — ¿ya hay un motor alcanzable ahora mismo? Solo detecta.
+- **create_environment** — asegura un motor USABLE: reusa uno que ya
+  responda, o si no hay ninguno (o el que hay no se puede usar — pide una
+  contraseña que no se tiene, por ejemplo), levanta uno propio en un
+  contenedor, en un puerto libre. Devuelve host/puerto/usuario/contraseña
+  de un usuario de aplicación recién creado — nunca de administrador, y
+  nunca una forma de llegar a un shell del host. Llamar a esta tool POR SU
+  NOMBRE es, en sí, el pedido explícito que el resto de este proyecto
+  exige antes de crear infraestructura — no hace falta (ni existe) un
+  flag `--create` acá.
+- **request_capability** — un único punto de entrada a `run_service`/
+  `create_environment`/`read_logs`/`run_tests`/`deploy_preview` por nombre
+  de capability, para quien prefiere no acordarse de 7 nombres de tool. No
+  agrega una capa de permisos propia: dispara la misma función que la tool
+  dedicada.
+- **read_logs** — la cola del log de un plugin instalado.
+- **run_tests** — el test runner CONVENCIONAL del lenguaje declarado
+  (`go test ./...`, `pytest`) adentro de la carpeta del plugin — nunca un
+  comando arbitrario que el agente pase como texto.
+- **deploy_preview** — compila y arranca un plugin para probarlo. Hoy solo
+  `target="local"`; cualquier otro destino se rechaza explícito en vez de
+  fingir un despliegue que no está cableado (mismo criterio que los
+  adapters `aws`/`azure` de este repo).
+
 ### `asterion plugin export` — empaquetar un plugin fuera de Asterion
 
 ```bash
@@ -1728,6 +1866,39 @@ construido todavía — deliberadamente, no por descuido:
 - **Desired State vs Actual State con drift detection**: no hay nada que
   reconciliar todavía porque Cloud no aplica configuración remota (ver
   arriba).
+
+**`asterion doctor`/`asterion import`/`asterion mcp`** — probados en vivo
+de punta a punta, con bugs reales encontrados y corregidos en el proceso
+(no solo `go build`): `doctor` contra un plugin real con un `.env`
+commiteado a propósito (lo detectó), un desajuste de versión de Go real,
+y una base MySQL real con su versión consultada con la credencial ya
+resuelta del plugin; `import` contra dos proyectos sintéticos completos
+(Node+Postgres+Redis con Dockerfile/docker-compose/prisma, y Python con
+Procfile + variables sueltas `DB_*`) cuyo `app.asterion` generado se
+compiló de verdad con el mismo compilador que usa `plugin from-asterion`
+(no solo "parece bien formado"); `mcp serve` conversado de punta a punta
+por JSON-RPC real (no solo unit tests) incluyendo `create_environment`
+contra un Postgres/Redis/MySQL reales de esta máquina, con el caso límite
+real de un Redis ya ocupado por algo que pide una contraseña que no se
+tiene — ahí cae a levantar uno propio en un puerto libre en vez de
+quedarse trabado.
+
+Limitaciones conocidas, explícitas a propósito:
+- `deploy_preview` (la tool MCP) solo sabe `target="local"` — ningún
+  despliegue a un proveedor de nube todavía, mismo criterio que los
+  adapters `aws`/`azure` ("publicar una llamada real sin probarla sería
+  peor que no tenerla").
+- La detección de credenciales de nube en `doctor`/`deploy_preview` es
+  presencia de archivo/variable de entorno (lo que ese CLI dejaría tras un
+  login) — nunca una prueba de que esas credenciales sirven de verdad.
+- `import` detecta Node y Rust como lenguaje de backend, pero
+  `plugin build` solo sabe compilar `go` y `python` hoy — un backend Node
+  importado necesita sus dependencias instaladas a mano (`npm ci`) antes
+  de `plugin start`; el `app.asterion` generado lo deja dicho en un `⚠`,
+  no lo oculta.
+- `run_tests` (la tool MCP) solo conoce la convención de `go`/`pytest` —
+  un plugin Node con `scripts.test` en su `package.json` todavía no tiene
+  un camino cableado ahí.
 
 ## Licencia
 

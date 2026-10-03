@@ -48,6 +48,69 @@ func containerRunner(name, kind string) engineRunner {
 	return engineRunner{container: name, host: "127.0.0.1", port: defaultPort(kind)}
 }
 
+// runnerFor elige el camino correcto a partir de un Status ya detectado —
+// mismo criterio en los dos lugares que necesitan hablarle al motor
+// (Provision y Version): si Asterion levantó el contenedor, se usa el
+// cliente que ya viene adentro.
+func runnerFor(st Status) engineRunner {
+	if st.Container != "" {
+		return containerRunner(st.Container, st.Service.Kind)
+	}
+	return hostRunner(st)
+}
+
+// Version pregunta al motor su versión real, con su propio comando — no la
+// que el manifiesto declaró (eso es lo que se PIDIÓ, esto es lo que HAY).
+// Para un servicio no alcanzable o sin cliente disponible, devuelve error:
+// quien llama (doctor) decide si eso es grave o solo falta de información.
+//
+// Usa la credencial YA RESUELTA del propio plugin (la que 'services up'
+// dejó en su config), no una de administrador — doctor no tiene, ni debe
+// tener, la del motor. Si el plugin todavía no está configurado no hay
+// con qué autenticar, y esta llamada ni se intenta (ver doctor/checks.go).
+func (st Status) Version(ctx context.Context, user, password, database string) (string, error) {
+	if !st.Reachable {
+		return "", fmt.Errorf("no responde")
+	}
+	r := runnerFor(st)
+	if r.container == "" && cliFor(st.Service.Kind) != "" && !st.CLIAvailable {
+		return "", fmt.Errorf("falta el cliente %q para preguntarle", cliFor(st.Service.Kind))
+	}
+
+	switch st.Service.Kind {
+	case KindPostgres:
+		env := []string{"PGPASSWORD=" + password}
+		out, err := r.run(ctx, "psql", env, "-h", st.Host, "-p", strconv.Itoa(st.Port), "-U", user, "-d", firstNonEmpty(database, "postgres"), "-tAc", "SHOW server_version")
+		if err != nil {
+			return "", fmt.Errorf("%s", firstLine(out, err))
+		}
+		return strings.TrimSpace(out), nil
+	case KindMySQL, KindMariaDB:
+		env := []string{"MYSQL_PWD=" + password}
+		out, err := r.run(ctx, "mysql", env, "-h", st.Host, "-P", strconv.Itoa(st.Port), "-u", user, "--protocol=TCP", "-N", "-B", "-e", "SELECT VERSION()")
+		if err != nil {
+			return "", fmt.Errorf("%s", firstLine(out, err))
+		}
+		return strings.TrimSpace(out), nil
+	case KindRedis:
+		var env []string
+		if password != "" {
+			env = []string{"REDISCLI_AUTH=" + password}
+		}
+		out, err := r.run(ctx, "redis-cli", env, "-h", st.Host, "-p", strconv.Itoa(st.Port), "INFO", "server")
+		if err != nil {
+			return "", fmt.Errorf("%s", firstLine(out, err))
+		}
+		for _, line := range strings.Split(out, "\n") {
+			if v, ok := strings.CutPrefix(strings.TrimSpace(line), "redis_version:"); ok {
+				return strings.TrimSpace(v), nil
+			}
+		}
+		return "", fmt.Errorf("no encontré 'redis_version' en la respuesta de INFO")
+	}
+	return "", fmt.Errorf("no sé cómo preguntarle la versión a %q", st.Service.Kind)
+}
+
 // run ejecuta el cliente del motor. env son variables tipo
 // PGPASSWORD/MYSQL_PWD: nunca argumentos, ni acá ni al cruzar a
 // 'docker exec' (-e pasa el nombre, y el valor lo toma del entorno del

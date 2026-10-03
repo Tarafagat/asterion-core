@@ -278,11 +278,9 @@ func Provision(ctx context.Context, spec apc.ServiceSpec, st Status, opts Provis
 	// una máquina que no tiene psql instalado, que es el caso normal en
 	// macOS. Solo se exige el cliente en el host cuando hay que hablarle a
 	// un motor que Asterion no levantó.
-	r := hostRunner(st)
-	if st.Container != "" {
-		r = containerRunner(st.Container, spec.Kind)
-	} else if cli := cliFor(spec.Kind); cli != "" && !st.CLIAvailable {
-		return nil, fmt.Errorf("falta %q en el PATH — es con lo que Asterion le habla a un %s que no levantó él; instalalo, o configurá este servicio a mano con 'asterion plugin services connect'", cli, spec.Kind)
+	r := runnerFor(st)
+	if st.Container == "" && cliFor(spec.Kind) != "" && !st.CLIAvailable {
+		return nil, fmt.Errorf("falta %q en el PATH — es con lo que Asterion le habla a un %s que no levantó él; instalalo, o configurá este servicio a mano con 'asterion plugin services connect'", cliFor(spec.Kind), spec.Kind)
 	}
 
 	// Lo que se vuelca a la config es SIEMPRE la dirección del host: es por
