@@ -268,7 +268,7 @@ func resolveProjectSlug(client *apiclient.Client, flagProjectSlug string) (strin
 		return iCreated < jCreated
 	})
 
-	fmt.Println("Elegí a qué proyecto conectar esta instancia:")
+	fmt.Println("Elige a qué proyecto conectar esta instancia:")
 	for i, p := range projects {
 		slug, _ := p["slug"].(string)
 		name, _ := p["name"].(string)

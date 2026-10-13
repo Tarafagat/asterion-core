@@ -27,7 +27,7 @@ pnpm build   # genera dist/, que backend-core sirve como estático
 ```
 
 `asterion local serve` espera este `dist/` ya generado — no lo compila
-solo. Volvé a correr `pnpm build` después de cualquier cambio.
+solo. Vuelve a correr `pnpm build` después de cualquier cambio.
 
 ## Desarrollo (con hot reload)
 
@@ -36,6 +36,6 @@ BACKEND_CORE_PORT=8091 venv/bin/python -m app.main   # en ../backend-core, en ot
 pnpm dev                                              # acá, sirve en :5173 y proxyea /api al puerto de arriba
 ```
 
-Para loguearte en modo desarrollo necesitás un token real: corré
+Para loguearte en modo desarrollo necesitás un token real: ejecuta
 `asterion local auth rotate` desde la terminal (o `asterion local serve`
-si es la primera vez) y pegalo en la pantalla de login.
+si es la primera vez) y pégalo en la pantalla de login.

@@ -310,7 +310,7 @@ func resolveInstalledPlugin(name string) (plugins.Installed, error) {
 		return plugins.Installed{}, fmt.Errorf("no hay ningún plugin instalado en esta máquina — 'asterion plugin install <repo-url>' primero")
 	}
 
-	fmt.Println("Elegí qué plugin conectar:")
+	fmt.Println("Elige qué plugin conectar:")
 	printInstalledPlugins(list)
 	fmt.Print("Número (o el nombre directamente): ")
 	choice := trimNewline(readLine())

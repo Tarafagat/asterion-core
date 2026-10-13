@@ -23,7 +23,7 @@ base de datos. Solo:
 
 El acceso lo controla un token que genera el CLI (`asterion local serve`,
 Go — ver `asterion-core/internal/localauth`), **no** este servicio: la
-primera vez que corrés `asterion local serve`, si no existe
+primera vez que corres `asterion local serve`, si no existe
 `~/.config/asterion/local-auth.yaml`, el CLI genera un token aleatorio, lo
 imprime UNA sola vez en la terminal, y guarda solo su hash SHA-256 en ese
 YAML (permisos `0600` — solo tu usuario del sistema operativo puede
@@ -65,8 +65,8 @@ venv/bin/python -m app.main
 ```
 
 `BACKEND_CORE_PORT=0` (default) hace que el sistema operativo elija un
-puerto libre; fijalo en `.env` si preferís uno estable. Necesitás que
-`~/.config/asterion/local-auth.yaml` ya exista (corré
+puerto libre; fíjalo en `.env` si prefieres uno estable. Necesitás que
+`~/.config/asterion/local-auth.yaml` ya exista (ejecuta
 `asterion local auth rotate` una vez si estás levantando esto sin pasar
 por `asterion local serve`).
 
@@ -111,14 +111,14 @@ tras un login válido.
 
 ## Troubleshooting
 
-- **"Todavía no se generó un token" al intentar entrar**: corré
+- **"Todavía no se generó un token" al intentar entrar**: ejecuta
   `asterion local serve` (o `asterion local auth rotate`) desde la
   terminal al menos una vez — el token lo genera el CLI, no el navegador.
 - **Token incorrecto (401) aunque estés seguro de que lo copiaste bien**:
   los tokens no se pueden mostrar dos veces (solo se guarda el hash) — si
-  no tenés el que se imprimió la primera vez, `asterion local auth rotate`
+  no tienes el que se imprimió la primera vez, `asterion local auth rotate`
   genera uno nuevo.
 - **La sección "Runtime" del dashboard muestra un error 503**: no encontré
-  el binario `asterion` — compilalo (`go build -o asterion ./cmd/asterion`
-  en `asterion-core/`) y agregalo al `PATH`, o fijá `ASTERION_BIN` a su
+  el binario `asterion` — compílalo (`go build -o asterion ./cmd/asterion`
+  en `asterion-core/`) y agrégalo al `PATH`, o fijá `ASTERION_BIN` a su
   ruta completa en `.env`.

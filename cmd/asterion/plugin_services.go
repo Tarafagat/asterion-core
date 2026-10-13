@@ -377,7 +377,7 @@ func runServicesConnect(name, serviceName string) error {
 	}
 
 	ask(spec.MapsHost, "Host", false, checkHost)
-	ask(spec.MapsPort, fmt.Sprintf("Puerto (estándar de %s si lo dejás vacío)", spec.Kind), false, checkPort)
+	ask(spec.MapsPort, fmt.Sprintf("Puerto (estándar de %s si lo dejas vacío)", spec.Kind), false, checkPort)
 	ask(spec.MapsUser, "Usuario", false, nil)
 	ask(spec.MapsPassword, "Contraseña", true, nil)
 	ask(spec.MapsDatabase, "Nombre de la base", false, nil)

@@ -55,7 +55,7 @@ func runConfigWizard(name string) error {
 	pending := map[string]string{}
 
 	fmt.Printf("\nConfigurando %q — %d campo(s)\n", installed.Name, len(schema))
-	fmt.Println("Elegí un número para editar ese campo. Otras opciones:")
+	fmt.Println("Elige un número para editar ese campo. Otras opciones:")
 	fmt.Println("  f  completar solo los OBLIGATORIOS que falten, uno tras otro")
 	fmt.Println("  t  recorrer TODOS los campos, uno tras otro")
 	fmt.Println("  g  guardar y salir     q  salir sin guardar")
@@ -191,7 +191,7 @@ func askField(f apc.ConfigField, current, pending map[string]string) bool {
 	case f.IsSecret():
 		fmt.Println("  (secreto: no se va a ver mientras lo escribes, y se guarda cifrado)")
 	case f.Default != "":
-		fmt.Printf("  (default si lo dejás vacío: %s)\n", f.Default)
+		fmt.Printf("  (default si lo dejas vacío: %s)\n", f.Default)
 	}
 	if v, ok := current[f.Key]; ok && v != "" {
 		fmt.Printf("  (actual: %s)\n", v)

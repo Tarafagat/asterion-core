@@ -327,7 +327,7 @@ func decidePassword(exists bool, opts ProvisionOptions, res *Resolution) (string
 	}
 	return "", fmt.Errorf("el usuario %q ya existe en el motor, pero no hay ninguna contraseña guardada para él en la config del plugin.\n"+
 		"    No puedo averiguar la que tiene (ningún motor la devuelve) ni inventar una: quedaría guardada una credencial que no funciona.\n"+
-		"    Elegí una: vuelve a correr con --rotate-password para asignarle una nueva (ojo: si algo más usa ese mismo usuario, deja de andar),\n"+
+		"    Elige una: vuelve a correr con --rotate-password para asignarle una nueva (ojo: si algo más usa ese mismo usuario, deja de andar),\n"+
 		"    o carga la que ya tenga a mano con 'asterion plugin services connect'", res.User)
 }
 

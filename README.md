@@ -124,7 +124,7 @@ Puntos clave de diseño:
 - **Dos servicios, dos puertos, dos propósitos.** El agente
   (`asterion agent-run`) empuja métricas a Asterion Cloud en segundo plano
   con la api-key de una instancia conectada. `backend-core` es un servidor
-  HTTP con login humano (el token) que solo vos podés abrir en el
+  HTTP con login humano (el token) que solo vos puedes abrir en el
   navegador — no hablan entre sí ni comparten sesión.
 - **backend-core es Python/FastAPI**, no Go — deliberadamente, para poder
   reusar código de verdad con `backend/` (Asterion Cloud), que también es
@@ -133,7 +133,7 @@ Puntos clave de diseño:
   nunca puede divergir entre Core y Cloud.
 - **El token nunca se guarda en texto plano.** `local-auth.yaml` solo tiene
   el hash SHA-256 — el mismo patrón que ya usan las API keys de instancia.
-  Si lo perdés, no hay forma de recuperarlo: `asterion local auth rotate`
+  Si lo pierdes, no hay forma de recuperarlo: `asterion local auth rotate`
   genera uno nuevo (e invalida el anterior).
 - **El archivo solo lo puede leer tu usuario del sistema operativo**
   (permisos `0600`) — la seguridad no depende de una cuenta externa, sino
@@ -171,11 +171,11 @@ completo (variables de entorno, endpoints) en
 
 ### Instalación (una vez)
 
-`backend-core/venv` se crea solo la primera vez que corrés `asterion local
+`backend-core/venv` se crea solo la primera vez que corres `asterion local
 serve` (crea el venv, instala `requirements.txt`) — no hace falta prepararlo
 a mano. Si tu `python3` del PATH es muy nuevo para alguna dependencia
 (pydantic-core/PyO3 suele ser la primera en fallar en versiones de Python
-recién salidas), pasá `--python /ruta/a/otro/python3` con una versión más
+recién salidas), pasa `--python /ruta/a/otro/python3` con una versión más
 estable. `frontend-core` sí hay que compilarlo aparte, una vez:
 
 ```bash
@@ -204,7 +204,7 @@ Windows. El mensaje siempre imprime la real, nunca una asumida — `backend-core
 la resuelve con el mismo criterio, ver `app/config.py`, para que ambos lados
 miren siempre el mismo archivo.)
 
-La primera vez imprime el token — copialo, no queda en ningún otro lado en
+La primera vez imprime el token — cópialo, no queda en ningún otro lado en
 texto plano. Las siguientes veces reusa el que ya existe (avisa que lo está
 reusando, no lo vuelve a mostrar). Si lo perdiste:
 
@@ -285,7 +285,7 @@ el rol de cada uno con más detalle que este README.
 ## Compilar
 
 Requiere Go 1.23+ (el `go.mod` fija el toolchain exacto vía `go 1.25.0`,
-`go build`/`go run` lo resuelven solos si tenés `GOTOOLCHAIN=auto`, el
+`go build`/`go run` lo resuelven solos si tienes `GOTOOLCHAIN=auto`, el
 default).
 
 ```bash
@@ -314,7 +314,7 @@ make version      # solo el número, para scripts
 ```
 
 Para instalar `asterion` de forma que puedas correrlo desde cualquier
-lado sin pensar en `$PATH`, usá el Makefile en vez de `go install` a
+lado sin pensar en `$PATH`, usa el Makefile en vez de `go install` a
 secas:
 
 ```bash
@@ -394,7 +394,7 @@ ASTERION_CORE_ADDR=:9000 ./asterion-core
 ```
 
 Corre en primer plano (`Ctrl-C` para parar) — para dejarlo corriendo de
-verdad, administralo con systemd/tu gestor de procesos igual que cualquier
+verdad, adminístralo con systemd/tu gestor de procesos igual que cualquier
 otro servicio (no tiene su propio modo `--background` como `local serve`).
 
 La API de Asterion (backend Python) apunta a esto con `CORE_SERVICE_URL`
@@ -423,9 +423,9 @@ Probado en vivo: `asterion local tunnel start` contra el dashboard local
 (`local serve`, puerto 8091) devolvió una URL real, respondida con `200`
 por `curl` desde afuera — pública de verdad, no un simulacro.
 
-Si ya tenés un dominio propio con un túnel con nombre creado a mano en el
+Si ya tienes un dominio propio con un túnel con nombre creado a mano en el
 dashboard de Cloudflare (Networks → Tunnels → tu túnel → "Install a
-connector" te da un token), guardalo una vez y `start` lo usa solo de ahí
+connector" te da un token), guárdalo una vez y `start` lo usa solo de ahí
 en adelante:
 
 ```bash
@@ -1003,7 +1003,7 @@ Secciones, y qué significa cada una de verdad:
 ### `asterion import` — convertir un proyecto que no sabe nada de Asterion
 
 La puerta de entrada para adoptar Asterion sin reescribir nada: en vez de
-"migrá tu infraestructura", el camino es "corré esto y mirá qué detectó".
+"migrá tu infraestructura", el camino es "ejecuta esto y mira qué detectó".
 
 ```bash
 asterion import .                                   # escribe ./app.asterion
@@ -1106,7 +1106,7 @@ de estado**:
   termina siendo pública en el bundle que descarga el navegador.
 - **`Dockerfile`** de referencia (multi-stage, según `language.name` —
   Go o Python, más un stage de Node si hay frontend) — un punto de
-  partida para `docker build` que **vos** corrés; Asterion nunca ejecuta
+  partida para `docker build` que **vos** corres; Asterion nunca ejecuta
   Docker por su cuenta. Confirmado en vivo: si el código del plugin
   escucha en `127.0.0.1` (la convención de desarrollo local), `docker
   run -p` no le va a llegar — tiene que escuchar en `0.0.0.0` para
@@ -1824,7 +1824,7 @@ de precios en vivo (`GET /pricing` de Cloud) solo se probó con la llamada
 HTTP en aislado, no con una sesión real de `asterion cloud login` de punta
 a punta contra un backend de Cloud corriendo; y `asterion local serve` no
 instala `backend-core` como servicio de fondo (a diferencia de
-`install-agent`) — hoy es un proceso en primer plano que corrés cuando lo
+`install-agent`) — hoy es un proceso en primer plano que corres cuando lo
 necesitás.
 
 **Runtime Engine (`internal/runtime/`) y heartbeat del Agent** — probados

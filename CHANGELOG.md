@@ -249,7 +249,7 @@ etiquetado, `Unreleased` pasa a ser `0.1.0`.
     pisa los bytes del inode viejo (el proceso ya corriendo lo sigue
     usando sin problema hasta que se reinicia a mano, `asterion agent
     restart`) sino que solo cambia a qué apunta el nombre. Aplicado a
-    los dos caminos (con y sin `sudo`) y al mensaje de "corré esto a
+    los dos caminos (con y sin `sudo`) y al mensaje de "ejecuta esto a
     mano" cuando la copia automática no puede.
   - Verificado en esta Mac (con un binario Go real compilado, corriendo
     de fondo, no un simple script): el `cp` a temporal + `mv` encima
