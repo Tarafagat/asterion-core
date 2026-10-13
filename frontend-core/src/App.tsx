@@ -74,7 +74,7 @@ export default function App() {
           <div className="card centered-message">
             <p className="section-title">Dashboard apagado</p>
             <p className="hint">
-              El proceso de backend-core se detuvo. Corré <code>asterion local serve</code> (o{" "}
+              El proceso de backend-core se detuvo. Ejecuta <code>asterion local serve</code> (o{" "}
               <code>asterion local serve --background</code>) de nuevo cuando quieras volver a entrar.
             </p>
           </div>
@@ -110,11 +110,11 @@ function LoginScreen({
       {authStatus?.configured ? (
         <p className="hint" style={{ marginTop: "0.75rem" }}>
           Pegá el token que te mostró <code>asterion local serve</code> en la terminal la primera vez que lo
-          corriste. Si lo perdiste, corré <code>asterion local auth rotate</code> para generar uno nuevo.
+          corriste. Si lo perdiste, ejecuta <code>asterion local auth rotate</code> para generar uno nuevo.
         </p>
       ) : (
         <p className="hint" style={{ marginTop: "0.75rem" }}>
-          Todavía no hay un token generado en esta máquina — corré <code>asterion local serve</code> (o{" "}
+          Todavía no hay un token generado en esta máquina — ejecuta <code>asterion local serve</code> (o{" "}
           <code>asterion local auth rotate</code>) desde la terminal primero.
         </p>
       )}
@@ -559,7 +559,7 @@ function PluginDetail({
         />
       ) : (
         <div className="card" style={{ marginTop: "0.85rem" }}>
-          <p className="hint">Este plugin no está corriendo — arrancalo para ver su panel.</p>
+          <p className="hint">Este plugin no está corriendo — arráncalo para ver su panel.</p>
           <button className="small-btn" style={{ marginTop: "0.6rem" }} disabled={busy} onClick={handleStart}>
             {busy ? "Arrancando…" : "Arrancar"}
           </button>
@@ -1258,7 +1258,7 @@ function OsUsersPanel({
       {revealedKey && (
         <div className="card" style={{ marginTop: "0.85rem" }}>
           <p className="hint">
-            Clave privada generada para <strong>{revealedKey.username}</strong> — copiala ahora, no se vuelve a
+            Clave privada generada para <strong>{revealedKey.username}</strong> — cópiala ahora, no se vuelve a
             mostrar:
           </p>
           <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{revealedKey.key}</pre>

@@ -42,7 +42,7 @@ def login_with_token(payload: TokenLoginRequest, request: Request, response: Res
     except auth.RateLimitExceeded as exc:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS,
-            f"Demasiados intentos fallidos desde esta IP — reintentá en {exc.retry_after} segundos.",
+            f"Demasiados intentos fallidos desde esta IP — reintenta en {exc.retry_after} segundos.",
             headers={"Retry-After": str(exc.retry_after)},
         ) from exc
 
@@ -51,7 +51,7 @@ def login_with_token(payload: TokenLoginRequest, request: Request, response: Res
     except auth.NoTokenConfigured as exc:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "Todavía no se generó un token de acceso en esta máquina — corré 'asterion local serve' "
+            "Todavía no se generó un token de acceso en esta máquina — ejecuta 'asterion local serve' "
             "(o 'asterion local auth rotate') al menos una vez primero.",
         ) from exc
     except auth.InvalidToken as exc:

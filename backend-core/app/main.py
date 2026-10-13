@@ -47,8 +47,8 @@ else:
     def _no_frontend_built() -> dict:
         return {
             "detail": (
-                "frontend-core todavía no tiene un build. Corré `pnpm build` en "
-                "asterion-core/frontend-core/ y reiniciá backend-core."
+                "frontend-core todavía no tiene un build. Ejecuta `pnpm build` en "
+                "asterion-core/frontend-core/ y reinicia backend-core."
             )
         }
 

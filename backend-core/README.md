@@ -55,7 +55,7 @@ APP_ENV=production venv/bin/python -m app.main    # production
 ## Levantar
 
 Normalmente no se corre directo — `asterion local serve` (el CLI) lo hace
-por vos, buscándolo en `../backend-core` relativo a donde lo corras (y
+por ti, buscándolo en `../backend-core` relativo a donde lo corras (y
 generando/reusando el token de acceso antes de arrancarlo). Para correrlo
 manualmente (debug, o si `asterion local serve` no lo encuentra):
 

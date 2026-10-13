@@ -124,7 +124,7 @@ Puntos clave de diseño:
 - **Dos servicios, dos puertos, dos propósitos.** El agente
   (`asterion agent-run`) empuja métricas a Asterion Cloud en segundo plano
   con la api-key de una instancia conectada. `backend-core` es un servidor
-  HTTP con login humano (el token) que solo vos puedes abrir en el
+  HTTP con login humano (el token) que solo tú puedes abrir en el
   navegador — no hablan entre sí ni comparten sesión.
 - **backend-core es Python/FastAPI**, no Go — deliberadamente, para poder
   reusar código de verdad con `backend/` (Asterion Cloud), que también es
@@ -458,7 +458,7 @@ proyecto). El CLI nunca ve cómo la API arma la sesión internamente — solo
 recibe un access token + refresh token genéricos vía `/auth/cli/*`.
 
 ```bash
-asterion cloud login --api-url https://api.tu-dominio.com --email vos@tuempresa.com
+asterion cloud login --api-url https://api.tu-dominio.com --email tu-email@tuempresa.com
 # Te pide el código de 6 dígitos que llegó por correo, y listo.
 
 asterion whoami
@@ -1106,7 +1106,7 @@ de estado**:
   termina siendo pública en el bundle que descarga el navegador.
 - **`Dockerfile`** de referencia (multi-stage, según `language.name` —
   Go o Python, más un stage de Node si hay frontend) — un punto de
-  partida para `docker build` que **vos** corres; Asterion nunca ejecuta
+  partida para `docker build` que **tú** corres; Asterion nunca ejecuta
   Docker por su cuenta. Confirmado en vivo: si el código del plugin
   escucha en `127.0.0.1` (la convención de desarrollo local), `docker
   run -p` no le va a llegar — tiene que escuchar en `0.0.0.0` para

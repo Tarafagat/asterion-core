@@ -174,7 +174,7 @@ async def proxy_to_plugin(name: str, path: str, request: Request, _: dict = Depe
     if installed.get("status") != "running":
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            f"El plugin {name!r} no está corriendo — arrancalo con 'asterion plugin start {name}' primero.",
+            f"El plugin {name!r} no está corriendo — arráncalo con 'asterion plugin start {name}' primero.",
         )
     port = installed["port"]
     body = await request.body()

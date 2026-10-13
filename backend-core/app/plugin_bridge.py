@@ -22,7 +22,7 @@ def _run(args: list[str], timeout: int = 15) -> dict | list:
     if not binary:
         raise PluginBridgeError(
             "No encontré el binario 'asterion' en PATH ni en la variable ASTERION_BIN. "
-            "Compilalo con 'go build -o asterion ./cmd/asterion' en asterion-core/ y agregalo "
+            "Compílalo con 'go build -o asterion ./cmd/asterion' en asterion-core/ y agrégalo "
             "al PATH, o fijá ASTERION_BIN a su ruta completa."
         )
     try:
